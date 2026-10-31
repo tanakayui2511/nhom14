@@ -1,30 +1,120 @@
-/* Material 3 role tokens. No image changes the application palette. */
 :root {
- --primary: #245d78;
- --on-primary: #ffffff;
- --primary-container: #cce6f5;
- --on-primary-container: #092f43;
- --secondary-container: #e0e8ed;
- --on-secondary-container: #253e4b;
- --surface: #f8f9fc;
- --on-surface: #191c20;
- --surface-container-low: #f0f3f7;
- --surface-container-high: #e5eaf0;
- --on-surface-variant: #444b53;
- --outline: #737b84;
- --outline-variant: #c3cbd3;
- --error: #ba1a1a;
- --on-error: #ffffff;
- --error-container: #ffdad6;
- --on-error-container: #410002;
- --vip-container: #f4e4c2;
- --on-vip-container: #503d15;
- --warning-container: #ffedc1;
- --on-warning-container: #553d00;
- --success-container: #d7efdf;
- --on-success-container: #173c29;
- --headline: 1.875rem;
- --title: 1.25rem;
- --body: 1rem;
- --label: .875rem;
+  color-scheme: light;
+  --color-violet: #7C5CFF;
+  --color-coral: #FF6B4A;
+  --color-mint: #19C58F;
+  --color-blue: #2F80FF;
+  --color-sun: #FFB020;
+  --color-pink: #F0479A;
+  --color-cyan: #12B8D6;
+  --color-red: #E13B4F;
+  --color-slate: #66758C;
+  --color-white: #FFFFFF;
+  --color-ink-deep: #172033;
+  --color-sidebar-top: #1E1B38;
+  --color-sidebar-bottom: #121121;
+  --color-sidebar-active: #17162A;
+  --color-brand-yellow: #FFE071;
+  --color-nav-caption: #8582A5;
+  --color-nav-text: #C7C4DC;
+  --color-heading-deep: #30225E;
+  --color-sun-ink: #3E2900;
+  --color-sun-strong: #B36A00;
+  --module-dashboard: var(--color-violet);
+  --module-issues: var(--color-coral);
+  --module-releases: var(--color-mint);
+  --module-dependencies: var(--color-blue);
+  --module-projects: var(--color-sun);
+  --module-audit: var(--color-pink);
+  --module-portfolio: var(--color-cyan);
+  --module-login: var(--color-violet);
+  --module-accent: var(--module-dashboard);
+  --module-accent-rgb: 124, 92, 255;
+  --status-open: #2F80FF;
+  --status-in-progress: #E96B22;
+  --status-resolved: #118D68;
+  --status-retest: #7555E8;
+  --status-verified: #526A78;
+  --status-closed: #526A78;
+  --status-blocked: #D92D45;
+  --priority-blocker: #9F1239;
+  --priority-critical: #D92D45;
+  --priority-high: #E96B22;
+  --priority-medium: #9A6700;
+  --priority-low: #118D68;
+  --page-bg: #F7F5FF;
+  --page-bg-warm: #FFFDF8;
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-soft: #F3F0FF;
+  --text: #1E2235;
+  --text-soft: #566078;
+  --text-muted: #6F7890;
+  --line: #E4E0F0;
+  --line-strong: #CEC7E2;
+  --sidebar-bg: #17162A;
+  --sidebar-text: #F7F5FF;
+  --sidebar-muted: #A9A6C2;
+  --on-color: #FFFFFF;
+  --focus: #2F80FF;
+  --success: #118D68;
+  --success-bg: #E7F8F1;
+  --warning: #9A6700;
+  --warning-bg: #FFF5D6;
+  --danger: #C72C41;
+  --danger-bg: #FFF0F2;
+  --info: #2268CC;
+  --info-bg: #EDF4FF;
+  --gradient-brand: linear-gradient(115deg, #6C55FF 0%, #D34FA8 52%, #FF7B45 100%);
+  --gradient-dashboard: linear-gradient(135deg, #6947F5, #A84FE8);
+  --gradient-issues: linear-gradient(135deg, #ED5339, #FF8A4C);
+  --gradient-releases: linear-gradient(135deg, #0F9F73, #25D3A1);
+  --gradient-dependencies: linear-gradient(135deg, #246EEB, #42A5FF);
+  --gradient-projects: linear-gradient(135deg, #E58C00, #FFC643);
+  --gradient-projects-header: linear-gradient(120deg, #9A5600, #D73E7F);
+  --gradient-audit: linear-gradient(135deg, #D93688, #F66BB0);
+  --gradient-portfolio: linear-gradient(135deg, #0799BC, #22C9D7);
+  --gradient-danger: linear-gradient(120deg, #C72C41, #F15B69);
+  --gradient-login: linear-gradient(-45deg, #6749F5, #D849A1, #FF774B, #19BFA0);
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 3px 12px rgba(45, 35, 82, .07);
+  --shadow-md: 0 14px 34px rgba(45, 35, 82, .11);
+  --shadow-color: 0 14px 30px rgba(var(--module-accent-rgb), .22);
+  --font: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
+}
+
+body.page-index { --module-accent: var(--module-dashboard); --module-accent-rgb: 124, 92, 255; }
+body.page-issues { --module-accent: var(--module-issues); --module-accent-rgb: 255, 107, 74; }
+body.page-releases,
+body.page-release-notes { --module-accent: var(--module-releases); --module-accent-rgb: 25, 197, 143; }
+body.page-dependencies { --module-accent: var(--module-dependencies); --module-accent-rgb: 47, 128, 255; }
+body.page-projects { --module-accent: var(--module-projects); --module-accent-rgb: 255, 176, 32; }
+body.page-audit { --module-accent: var(--module-audit); --module-accent-rgb: 240, 71, 154; }
+body.page-login { --module-accent: var(--module-login); --module-accent-rgb: 124, 92, 255; }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page-bg: #10101A;
+  --page-bg-warm: #10101A;
+  --surface: #191925;
+  --surface-raised: #20202F;
+  --surface-soft: #26233A;
+  --text: #F7F5FF;
+  --text-soft: #CED0E3;
+  --text-muted: #A7ABC2;
+  --line: #353449;
+  --line-strong: #4A4862;
+  --sidebar-bg: #0B0B13;
+  --sidebar-text: #FFFFFF;
+  --sidebar-muted: #A9A6C2;
+  --success-bg: #12382E;
+  --warning-bg: #3D3016;
+  --danger-bg: #421E29;
+  --info-bg: #182F50;
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, .25);
+  --shadow-md: 0 18px 40px rgba(0, 0, 0, .32);
+  --shadow-color: 0 14px 32px rgba(var(--module-accent-rgb), .18);
 }

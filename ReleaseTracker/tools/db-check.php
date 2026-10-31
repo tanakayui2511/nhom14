@@ -6,6 +6,6 @@ try {
     $v = pg_fetch_assoc($r);
     echo 'CSDL=' . $v['db'] . ' | USER=' . $v['u'] . "\n";
 } catch (Throwable $e) {
-    fwrite(STDERR, 'CHUA_SAN_SANG_CSDL: ' . $e->getMessage() . "\nChạy bash lab.sh db-config sau khi tạo CSDL lab.\n");
+    fwrite(STDERR, 'CHUA_SAN_SANG_CSDL: ' . $e->getMessage() . "\nChạy bash lab.sh db-config sau khi tạo CSDL ReleaseTracker.\n");
     exit(2);
 }

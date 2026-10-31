@@ -23,8 +23,8 @@ try {
     $c = [
         'PGHOST' => ask('Máy chủ', '127.0.0.1'),
         'PGPORT' => ask('Cổng', '5432'),
-        'PGDATABASE' => ask('CSDL lab riêng', 'communitypass_lab_v5'),
-        'PGUSER' => ask('Tài khoản lab', 'communitypass_lab_v5')
+        'PGDATABASE' => ask('CSDL ReleaseTracker', 'releasetracker'),
+        'PGUSER' => ask('Tài khoản PostgreSQL', 'releasetracker')
     ];
     if (!ctype_digit($c['PGPORT']) || (int)$c['PGPORT'] < 1 || (int)$c['PGPORT'] > 65535) {
         throw new RuntimeException('Cong khong hop le');

@@ -1,15 +1,21 @@
 -- Dữ liệu demo. Mật khẩu cho các tài khoản demo: demo1234 (chỉ dùng cục bộ).
 INSERT INTO users(username,full_name,password_hash) VALUES
-('dev_a','Nguyễn An','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('tester_a','Trần Bình','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('release_a','Lê Chi','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('dev_b','Phạm Dũng','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi')
+('dev_a','Nguyễn An','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('tester_a','Trần Bình','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('release_a','Lê Chi','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('dev_b','Phạm Dũng','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi'),('admin_a','Quản trị viên','$2y$12$93whwDc3gqE985twbzxinOMz2aEWkQkerQcTtuU5.bcyIXZ0EDdSi')
 ON CONFLICT(username) DO NOTHING;
 INSERT INTO projects(name,description) VALUES
 ('ReleaseTracker Core','Theo dõi lỗi và phát hành hệ thống quản lý công việc.'),
 ('Mobile Client','Ứng dụng khách trên thiết bị di động.') ON CONFLICT DO NOTHING;
 INSERT INTO project_members(project_id,user_id,role)
-SELECT p.id,u.id, CASE u.username WHEN 'tester_a' THEN 'tester' WHEN 'release_a' THEN 'release_manager' ELSE 'developer' END
+SELECT p.id,u.id,
+ CASE u.username
+   WHEN 'tester_a' THEN 'tester'
+   WHEN 'release_a' THEN 'release_manager'
+   WHEN 'admin_a' THEN 'admin'
+   ELSE 'developer'
+ END
 FROM projects p CROSS JOIN users u
-WHERE (p.name='ReleaseTracker Core' AND u.username IN ('dev_a','tester_a','release_a'))
-   OR (p.name='Mobile Client' AND u.username IN ('dev_b'))
+WHERE (p.name='ReleaseTracker Core' AND u.username IN ('dev_a','tester_a','release_a','admin_a'))
+   OR (p.name='Mobile Client' AND u.username IN ('dev_b','admin_a'))
 ON CONFLICT DO NOTHING;
 
 INSERT INTO issues(project_id,title,description,reproduction_steps,issue_type,priority,status,reporter_id,assignee_id)
@@ -23,7 +29,7 @@ FROM (VALUES
 ('Bổ sung ghi chú phát hành','Xuất ghi chú phiên bản dạng Markdown.','Mở trang phiên bản','feature','medium','in_progress','dev_a','dev_a'),
 ('Lỗi phân trang khi trang rỗng','Trang cuối có thể trả lỗi.','Tìm kiếm không có kết quả','bug','high','open','tester_a','dev_a'),
 ('Thêm kiểm thử hồi quy','Bổ sung kiểm thử cho luồng đăng nhập.','Chạy bộ test hồi quy','task','medium','open','dev_a','dev_a'),
-('Thông báo lỗi biểu mẫu chưa rõ','Nêu trường nào không hợp lệ.','Gửi biểu mẫu thiếu dữ liệu','bug','low','verified','tester_a','dev_a'),
+('Thông báo lỗi biểu mẫu chưa rõ','Nêu trường nào không hợp lệ.','Gửi biểu mẫu thiếu dữ liệu','bug','low','resolved','tester_a','dev_a'),
 ('Tối ưu truy vấn bảng công việc','Giảm số truy vấn trong dashboard.','Mở dashboard với nhiều bản ghi','task','high','in_progress','dev_a','dev_a'),
 ('Đồng bộ trạng thái kiểm thử','Hiển thị kết quả kiểm thử mới nhất.','Chạy kiểm thử sau khi sửa','bug','critical','retest','tester_a','dev_a'),
 ('Liên kết commit vào công việc','Lưu URL commit hoặc pull request.','Cập nhật trường liên kết','feature','low','open','dev_a','dev_a'),
@@ -66,8 +72,8 @@ FROM projects p CROSS JOIN users u CROSS JOIN (VALUES
 WHERE p.name='Mobile Client' AND u.username='dev_b'
 ON CONFLICT DO NOTHING;
 -- 15 quan hệ phụ thuộc, không tạo vòng trong dữ liệu mẫu.
-INSERT INTO dependencies(issue_id,depends_on_id)
-SELECT a.id,b.id FROM issues a JOIN issues b ON a.project_id=b.project_id
+INSERT INTO dependencies(issue_id,depends_on_id,issue_project_id,depends_on_project_id)
+SELECT a.id,b.id,a.project_id,b.project_id FROM issues a JOIN issues b ON a.project_id=b.project_id
 WHERE a.project_id=(SELECT id FROM projects WHERE name='ReleaseTracker Core') AND b.project_id=a.project_id
 AND ((a.title LIKE 'Lỗi đăng nhập%' AND b.title LIKE 'API trả mã%')
 OR (a.title LIKE 'Bổ sung lọc%' AND b.title LIKE 'Tối ưu truy vấn%')

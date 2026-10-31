@@ -1,0 +1,33 @@
+# Local secrets and database configuration (never commit)
+.local/
+.env
+.env.*
+!.env.example
+
+# Database dumps, backups and archives
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.age
+backups/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Keys, certificates and database client credentials
+*.pem
+*.key
+*.p12
+*.pfx
+.pgpass
+.pgpass.conf
+id_rsa*
+id_ed25519*
+
+# OS / editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

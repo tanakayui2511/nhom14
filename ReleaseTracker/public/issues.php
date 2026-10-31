@@ -1,4 +1,353 @@
-<?php require __DIR__.'/../src/App.php';$u=requireLogin();$c=db();$err='';$msg='';$projectId=(int)($_REQUEST['project_id']??0);if(!$projectId){$r=queryParams($c,'SELECT project_id FROM project_members WHERE user_id=$1 ORDER BY project_id LIMIT 1',[(string)$u['id']]);$x=pg_fetch_assoc($r);$projectId=(int)($x['project_id']??0);} if($projectId)requireProjectAccess($c,$projectId,$u);
-if($_SERVER['REQUEST_METHOD']==='POST'){checkCsrf();$action=(string)($_POST['action']??'');$projectId=(int)($_POST['project_id']??$projectId);requireProjectAccess($c,$projectId,$u);try{if($action==='create'){if(($_POST['assignee_id']??'')!=='' && !canAssignToProject($c,$projectId,(int)$_POST['assignee_id']))throw new RuntimeException('Người được phân công không thuộc dự án này.');$title=trim((string)($_POST['title']??''));if($title==='')throw new RuntimeException('Tiêu đề không được để trống.');$r=queryParams($c,'INSERT INTO issues(project_id,title,description,reproduction_steps,issue_type,priority,reporter_id,assignee_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',[(string)$projectId,$title,trim((string)($_POST['description']??'')),trim((string)($_POST['steps']??'')),(string)($_POST['issue_type']??'bug'),(string)($_POST['priority']??'medium'),(string)$u['id'],($_POST['assignee_id']??'')!==''?(string)$_POST['assignee_id']:null]);$id=(int)pg_fetch_result($r,0,0);audit($c,$projectId,(int)$u['id'],'issue_created','issue',$id);$msg='Đã tạo công việc.';}elseif($action==='update'){if(($_POST['assignee_id']??'')!=='' && !canAssignToProject($c,$projectId,(int)$_POST['assignee_id']))throw new RuntimeException('Người được phân công không thuộc dự án này.');$id=(int)$_POST['id'];$base=(int)$_POST['version'];$r=queryParams($c,'UPDATE issues SET title=$1,description=$2,reproduction_steps=$3,priority=$4,status=$5,assignee_id=$6,commit_url=$7,version=version+1,updated_at=now() WHERE id=$8 AND project_id=$9 AND version=$10 RETURNING id,version', [trim((string)$_POST['title']),trim((string)$_POST['description']),trim((string)$_POST['steps']),(string)$_POST['priority'],(string)$_POST['status'],($_POST['assignee_id']??'')!==''?(string)$_POST['assignee_id']:null,trim((string)($_POST['commit_url']??'')),(string)$id,(string)$projectId,(string)$base]);if(pg_num_rows($r)===0){$check=queryParams($c,'SELECT version FROM issues WHERE id=$1 AND project_id=$2',[(string)$id,(string)$projectId]);if(pg_num_rows($check)===0)throw new RuntimeException('Không tìm thấy công việc trong dự án.');throw new RuntimeException('XUNG ĐỘT: công việc đã được người khác cập nhật. Tải lại dữ liệu trước khi lưu.');}audit($c,$projectId,(int)$u['id'],'issue_updated','issue',$id);$msg='Đã cập nhật công việc.';}elseif($action==='comment'){$id=(int)$_POST['id'];queryParams($c,'INSERT INTO comments(issue_id,user_id,body) SELECT id,$2,$3 FROM issues WHERE id=$1 AND project_id=$4',[(string)$id,(string)$u['id'],trim((string)$_POST['body']),(string)$projectId]);$msg='Đã thêm bình luận.';}elseif($action==='test'){$id=(int)$_POST['id'];queryParams($c,'INSERT INTO test_results(issue_id,tester_id,result,notes) SELECT id,$2,$3,$4 FROM issues WHERE id=$1 AND project_id=$5',[(string)$id,(string)$u['id'],(string)$_POST['result'],trim((string)$_POST['notes']),(string)$projectId]);if($_POST['result']==='passed')queryParams($c,"UPDATE issues SET status='verified',version=version+1,updated_at=now() WHERE id=$1 AND project_id=$2",[(string)$id,(string)$projectId]);else queryParams($c,"UPDATE issues SET status='retest',version=version+1,updated_at=now() WHERE id=$1 AND project_id=$2",[(string)$id,(string)$projectId]);$msg='Đã lưu kết quả kiểm thử.';}}catch(Throwable $e){$err=$e->getMessage();}}
-$projects=pg_fetch_all(queryParams($c,'SELECT p.id,p.name FROM projects p JOIN project_members pm ON pm.project_id=p.id WHERE pm.user_id=$1 ORDER BY p.id',[(string)$u['id']]))?:[];$members=pg_fetch_all(queryParams($c,'SELECT u.id,u.full_name FROM users u JOIN project_members pm ON pm.user_id=u.id WHERE pm.project_id=$1 ORDER BY u.full_name',[(string)$projectId]))?:[];$r=queryParams($c,'SELECT i.*,a.full_name assignee FROM issues i LEFT JOIN users a ON a.id=i.assignee_id WHERE i.project_id=$1 ORDER BY CASE i.priority WHEN \'blocker\' THEN 1 WHEN \'critical\' THEN 2 WHEN \'high\' THEN 3 WHEN \'medium\' THEN 4 ELSE 5 END,i.id',[(string)$projectId]);$issues=pg_fetch_all($r)?:[];$selected=(int)($_GET['id']??$_POST['id']??0);$detail=null;if($selected){$r=queryParams($c,'SELECT i.*,a.full_name assignee FROM issues i LEFT JOIN users a ON a.id=i.assignee_id WHERE i.id=$1 AND i.project_id=$2',[(string)$selected,(string)$projectId]);$detail=pg_fetch_assoc($r)?:null;}
-pageStart('Lỗi và công việc');if($err)echo '<p class="error">'.h($err).'</p>';if($msg)echo '<p class="ok">'.h($msg).'</p>';?><section class="panel"><form method="get"><label class="field">Dự án<select name="project_id" onchange="this.form.submit()"><?php foreach($projects as $p):?><option value="<?=$p['id']?>" <?=$projectId==(int)$p['id']?'selected':''?>><?=h($p['name'])?></option><?php endforeach;?></select></label></form></section><section class="panel"><h2>Tạo lỗi hoặc công việc</h2><form method="post"><input type="hidden" name="csrf" value="<?=h(csrfToken())?>"><input type="hidden" name="action" value="create"><input type="hidden" name="project_id" value="<?=$projectId?>"><label class="field">Tiêu đề<input name="title" required maxlength="200"></label><label class="field">Mô tả<textarea name="description" rows="2"></textarea></label><label class="field">Các bước tái hiện<textarea name="steps" rows="2"></textarea></label><div class="grid"><label class="field">Loại<select name="issue_type"><option value="bug">Lỗi</option><option value="task">Công việc</option><option value="feature">Tính năng</option></select></label><label class="field">Ưu tiên<select name="priority"><option value="blocker">Blocker</option><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></label><label class="field">Phân công<select name="assignee_id"><option value="">Chưa phân công</option><?php foreach($members as $m):?><option value="<?=$m['id']?>"><?=h($m['full_name'])?></option><?php endforeach;?></select></label></div><button>Tạo mới</button></form></section><?php if($detail):?><section class="panel"><h2>Chi tiết #<?=$detail['id']?> · <?=h($detail['title'])?></h2><p><?=h($detail['description'])?></p><p><b>Các bước tái hiện:</b> <?=nl2br(h($detail['reproduction_steps']))?></p><p>Trạng thái: <span class="pill"><?=h($detail['status'])?></span> · Ưu tiên: <span class="pill"><?=h($detail['priority'])?></span> · Phiên bản dữ liệu: <?=$detail['version']?></p><form method="post"><input type="hidden" name="csrf" value="<?=h(csrfToken())?>"><input type="hidden" name="action" value="update"><input type="hidden" name="id" value="<?=$detail['id']?>"><input type="hidden" name="project_id" value="<?=$projectId?>"><input type="hidden" name="version" value="<?=$detail['version']?>"><label class="field">Tiêu đề<input name="title" value="<?=h($detail['title'])?>" required></label><label class="field">Mô tả<textarea name="description"><?=h($detail['description'])?></textarea></label><label class="field">Bước tái hiện<textarea name="steps"><?=h($detail['reproduction_steps'])?></textarea></label><div class="grid"><label class="field">Ưu tiên<select name="priority"><?php foreach(['blocker','critical','high','medium','low'] as $v):?><option <?=$detail['priority']===$v?'selected':''?>><?=$v?></option><?php endforeach;?></select></label><label class="field">Trạng thái<select name="status"><?php foreach(['open','in_progress','resolved','retest','verified','closed'] as $v):?><option <?=$detail['status']===$v?'selected':''?>><?=$v?></option><?php endforeach;?></select></label><label class="field">Người phụ trách<select name="assignee_id"><option value="">Chưa phân công</option><?php foreach($members as $m):?><option value="<?=$m['id']?>" <?=(string)$detail['assignee_id']===(string)$m['id']?'selected':''?>><?=h($m['full_name'])?></option><?php endforeach;?></select></label></div><label class="field">Commit / PR URL<input name="commit_url" value="<?=h($detail['commit_url'])?>"></label><button>Lưu có kiểm soát phiên bản</button></form><div class="grid"><form method="post" class="panel"><input type="hidden" name="csrf" value="<?=h(csrfToken())?>"><input type="hidden" name="action" value="comment"><input type="hidden" name="id" value="<?=$detail['id']?>"><input type="hidden" name="project_id" value="<?=$projectId?>"><label class="field">Bình luận<textarea name="body" required></textarea></label><button>Gửi bình luận</button></form><form method="post" class="panel"><input type="hidden" name="csrf" value="<?=h(csrfToken())?>"><input type="hidden" name="action" value="test"><input type="hidden" name="id" value="<?=$detail['id']?>"><input type="hidden" name="project_id" value="<?=$projectId?>"><label class="field">Kết quả kiểm thử<select name="result"><option value="passed">Đạt</option><option value="failed">Không đạt</option><option value="blocked">Bị chặn</option></select></label><label class="field">Ghi chú<textarea name="notes"></textarea></label><button>Lưu kết quả</button></form></div><?php $cs=pg_fetch_all(queryParams($c,'SELECT c.body,c.created_at,u.full_name FROM comments c JOIN users u ON u.id=c.user_id WHERE c.issue_id=$1 ORDER BY c.id DESC',[(string)$detail['id']]))?:[];$ts=pg_fetch_all(queryParams($c,'SELECT t.result,t.notes,t.tested_at,u.full_name FROM test_results t JOIN users u ON u.id=t.tester_id WHERE t.issue_id=$1 ORDER BY t.id DESC',[(string)$detail['id']]))?:[];?><h3>Bình luận</h3><?php foreach($cs as $x):?><p><?=h($x['full_name'])?>: <?=h($x['body'])?> <span class="muted"><?=h($x['created_at'])?></span></p><?php endforeach;?><h3>Kết quả kiểm thử</h3><?php foreach($ts as $x):?><p><span class="pill"><?=h($x['result'])?></span> <?=h($x['notes'])?> · <?=h($x['full_name'])?></p><?php endforeach;?></section><?php endif;?><section class="panel"><h2>Danh sách công việc (<?=count($issues)?>)</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Tiêu đề</th><th>Ưu tiên</th><th>Trạng thái</th><th>Phụ trách</th><th></th></tr></thead><tbody><?php foreach($issues as $i):?><tr><td>#<?=$i['id']?></td><td><?=h($i['title'])?></td><td><span class="pill"><?=h($i['priority'])?></span></td><td><?=h($i['status'])?></td><td><?=h($i['assignee']??'—')?></td><td><a href="?project_id=<?=$projectId?>&id=<?=$i['id']?>">Mở / sửa</a></td></tr><?php endforeach;?></tbody></table></div></section><?php pageEnd(); ?>
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../src/IssueService.php';
+
+$user = requireLogin();
+$connection = db();
+$projects = queryAll(
+    $connection,
+    'SELECT p.id,p.name,pm.role
+     FROM projects p
+     JOIN project_members pm ON pm.project_id=p.id
+     WHERE pm.user_id=$1
+     ORDER BY p.id',
+    [(string)$user['id']]
+);
+$projectId = (int)($_REQUEST['project_id'] ?? 0);
+if ($projectId === 0 && $projects !== []) {
+    $projectId = (int)$projects[0]['id'];
+}
+$role = null;
+if ($projectId > 0) {
+    requireProjectAccess($connection, $projectId, $user);
+    $role = projectRole($connection, $projectId, $user);
+}
+$error = '';
+$selected = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    checkCsrf();
+    $projectId = (int)($_POST['project_id'] ?? 0);
+    if ($projectId <= 0) {
+        $error = 'Dự án không hợp lệ.';
+    } else {
+        requireProjectAccess($connection, $projectId, $user);
+        $role = projectRole($connection, $projectId, $user);
+        try {
+            $action = (string)($_POST['action'] ?? '');
+            if ($action === 'create') {
+                $id = IssueService::create($connection, $projectId, (int)$user['id'], $role, $_POST);
+                flash('ok', 'Đã tạo công việc #' . $id . '.');
+                redirect('/issues.php?project_id=' . $projectId . '&id=' . $id);
+            }
+            if ($action === 'update') {
+                $id = postInt($_POST, 'id', 1, PHP_INT_MAX, 'ID công việc');
+                $baseVersion = postInt($_POST, 'version', 1, PHP_INT_MAX, 'Phiên bản dữ liệu');
+                $newVersion = IssueService::update(
+                    $connection,
+                    $projectId,
+                    (int)$user['id'],
+                    $role,
+                    $id,
+                    $baseVersion,
+                    $_POST
+                );
+                flash('ok', 'Đã cập nhật công việc #' . $id . ' lên phiên bản ' . $newVersion . '.');
+                redirect('/issues.php?project_id=' . $projectId . '&id=' . $id);
+            }
+            if ($action === 'comment') {
+                $id = postInt($_POST, 'id', 1, PHP_INT_MAX, 'ID công việc');
+                IssueService::addComment($connection, $projectId, (int)$user['id'], $role, $id, $_POST);
+                flash('ok', 'Đã thêm bình luận.');
+                redirect('/issues.php?project_id=' . $projectId . '&id=' . $id);
+            }
+            if ($action === 'test') {
+                $id = postInt($_POST, 'id', 1, PHP_INT_MAX, 'ID công việc');
+                $newVersion = IssueService::recordTest(
+                    $connection,
+                    $projectId,
+                    (int)$user['id'],
+                    $role,
+                    $id,
+                    $_POST
+                );
+                flash('ok', 'Đã lưu kết quả kiểm thử; công việc ở phiên bản ' . $newVersion . '.');
+                redirect('/issues.php?project_id=' . $projectId . '&id=' . $id);
+            }
+            throw new ValidationException('Thao tác không hợp lệ.');
+        } catch (Throwable $exception) {
+            $error = userMessage($exception);
+            $selected = (int)($_POST['id'] ?? $selected);
+        }
+    }
+}
+
+$members = $projectId > 0
+    ? queryAll(
+        $connection,
+        'SELECT u.id,u.full_name
+         FROM users u
+         JOIN project_members pm ON pm.user_id=u.id
+         WHERE pm.project_id=$1
+         ORDER BY u.full_name',
+        [(string)$projectId]
+    )
+    : [];
+$issues = $projectId > 0
+    ? queryAll(
+        $connection,
+        "SELECT i.*,a.full_name AS assignee
+         FROM issues i
+         LEFT JOIN users a ON a.id=i.assignee_id
+         WHERE i.project_id=$1
+         ORDER BY CASE i.priority
+             WHEN 'blocker' THEN 1 WHEN 'critical' THEN 2 WHEN 'high' THEN 3
+             WHEN 'medium' THEN 4 ELSE 5 END, i.id",
+        [(string)$projectId]
+    )
+    : [];
+$detail = null;
+$comments = [];
+$testResults = [];
+if ($selected > 0 && $projectId > 0) {
+    $detail = queryOne(
+        $connection,
+        'SELECT i.*,a.full_name AS assignee,r.full_name AS reporter
+         FROM issues i
+         LEFT JOIN users a ON a.id=i.assignee_id
+         LEFT JOIN users r ON r.id=i.reporter_id
+         WHERE i.id=$1 AND i.project_id=$2',
+        [(string)$selected, (string)$projectId]
+    );
+    if ($detail !== null) {
+        $comments = queryAll(
+            $connection,
+            'SELECT c.body,c.created_at,u.full_name
+             FROM comments c JOIN users u ON u.id=c.user_id
+             WHERE c.issue_id=$1 ORDER BY c.id DESC',
+            [(string)$selected]
+        );
+        $testResults = queryAll(
+            $connection,
+            'SELECT t.*,u.full_name AS tester_name,(t.issue_version=i.version) AS is_current
+             FROM test_results t
+             JOIN users u ON u.id=t.tester_id
+             JOIN issues i ON i.id=t.issue_id
+             WHERE t.issue_id=$1 ORDER BY t.id DESC',
+            [(string)$selected]
+        );
+    }
+}
+
+pageStart('Lỗi và công việc');
+if ($error !== '') {
+    echo '<p class="error">' . nl2br(h($error)) . '</p>';
+}
+?>
+<?php if ($projects === []): ?>
+    <section class="panel"><p>Bạn chưa thuộc dự án nào. Hãy liên hệ quản trị viên dự án.</p></section>
+<?php else: ?>
+    <section class="panel">
+        <form method="get">
+            <label class="field">Dự án
+                <select name="project_id" onchange="this.form.submit()">
+                    <?php foreach ($projects as $project): ?>
+                        <option value="<?= (int)$project['id'] ?>" <?= $projectId === (int)$project['id'] ? 'selected' : '' ?>>
+                            <?= h($project['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+        </form>
+        <p class="muted">Vai trò của bạn trong dự án: <span class="pill"><?= h((string)$role) ?></span> ·
+            <a href="/dependencies.php?project_id=<?= $projectId ?>">Xem quan hệ phụ thuộc</a>
+        </p>
+    </section>
+
+    <?php if (canCreateIssue($role)): ?>
+        <section class="panel">
+            <h2>Tạo lỗi hoặc công việc</h2>
+            <form method="post">
+                <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
+                <input type="hidden" name="action" value="create">
+                <input type="hidden" name="project_id" value="<?= $projectId ?>">
+                <label class="field">Tiêu đề<input name="title" required maxlength="200"></label>
+                <label class="field">Mô tả<textarea name="description" rows="2" maxlength="20000"></textarea></label>
+                <label class="field">Các bước tái hiện<textarea name="steps" rows="2" maxlength="20000"></textarea></label>
+                <div class="grid">
+                    <label class="field">Loại
+                        <select name="issue_type">
+                            <option value="bug">Lỗi</option>
+                            <option value="task">Công việc</option>
+                            <option value="feature">Tính năng</option>
+                        </select>
+                    </label>
+                    <label class="field">Ưu tiên
+                        <select name="priority">
+                            <?php foreach (issuePriorities() as $value): ?>
+                                <option value="<?= h($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>>
+                                    <?= h(ucfirst($value)) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="field">Phân công
+                        <select name="assignee_id">
+                            <option value="">Chưa phân công</option>
+                            <?php foreach ($members as $member): ?>
+                                <option value="<?= (int)$member['id'] ?>"><?= h($member['full_name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </div>
+                <button>Tạo mới</button>
+            </form>
+        </section>
+    <?php endif; ?>
+
+    <?php if ($detail !== null): ?>
+        <?php
+        $reporterId = $detail['reporter_id'] === null ? null : (int)$detail['reporter_id'];
+        $assigneeId = $detail['assignee_id'] === null ? null : (int)$detail['assignee_id'];
+        $canEdit = canEditIssue($role, (int)$user['id'], $reporterId, $assigneeId);
+        ?>
+        <section class="panel">
+            <h2>Chi tiết #<?= (int)$detail['id'] ?> · <?= h($detail['title']) ?></h2>
+            <p><?= nl2br(h($detail['description'])) ?></p>
+            <p><b>Các bước tái hiện:</b> <?= nl2br(h($detail['reproduction_steps'])) ?></p>
+            <p>
+                Trạng thái: <span class="pill"><?= h($detail['status']) ?></span> ·
+                Ưu tiên: <span class="pill"><?= h($detail['priority']) ?></span> ·
+                Phiên bản dữ liệu: <?= (int)$detail['version'] ?> ·
+                Người phụ trách: <?= h($detail['assignee'] ?? 'Chưa phân công') ?> ·
+                Người báo cáo: <?= h($detail['reporter'] ?? 'Không xác định') ?>
+            </p>
+            <?php if ((string)$detail['commit_url'] !== ''): ?>
+                <p>Commit / PR: <a href="<?= h($detail['commit_url']) ?>" rel="noopener noreferrer"><?= h($detail['commit_url']) ?></a></p>
+            <?php endif; ?>
+
+            <?php if ($canEdit): ?>
+                <h3>Cập nhật công việc</h3>
+                <form method="post">
+                    <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="id" value="<?= (int)$detail['id'] ?>">
+                    <input type="hidden" name="project_id" value="<?= $projectId ?>">
+                    <input type="hidden" name="version" value="<?= (int)$detail['version'] ?>">
+                    <label class="field">Tiêu đề<input name="title" value="<?= h($detail['title']) ?>" required maxlength="200"></label>
+                    <label class="field">Mô tả<textarea name="description" maxlength="20000"><?= h($detail['description']) ?></textarea></label>
+                    <label class="field">Bước tái hiện<textarea name="steps" maxlength="20000"><?= h($detail['reproduction_steps']) ?></textarea></label>
+                    <div class="grid">
+                        <label class="field">Ưu tiên
+                            <select name="priority">
+                                <?php foreach (issuePriorities() as $value): ?>
+                                    <option value="<?= h($value) ?>" <?= $detail['priority'] === $value ? 'selected' : '' ?>><?= h($value) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="field">Trạng thái
+                            <select name="status">
+                                <?php foreach (issueStatuses() as $value): ?>
+                                    <?php if ($value === 'verified' && (string)$detail['status'] !== 'verified') { continue; } ?>
+                                    <option value="<?= h($value) ?>" <?= $detail['status'] === $value ? 'selected' : '' ?>><?= h($value) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="muted">Chỉ chuyển sang verified bằng cách ghi kết quả kiểm thử passed.</small>
+                        </label>
+                        <label class="field">Người phụ trách
+                            <select name="assignee_id">
+                                <option value="">Chưa phân công</option>
+                                <?php foreach ($members as $member): ?>
+                                    <option value="<?= (int)$member['id'] ?>" <?= (string)$detail['assignee_id'] === (string)$member['id'] ? 'selected' : '' ?>>
+                                        <?= h($member['full_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="field">Commit / PR URL<input name="commit_url" value="<?= h($detail['commit_url']) ?>" maxlength="500"></label>
+                    <button>Lưu có kiểm soát phiên bản</button>
+                </form>
+            <?php endif; ?>
+
+            <div class="grid">
+                <form method="post" class="panel">
+                    <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
+                    <input type="hidden" name="action" value="comment">
+                    <input type="hidden" name="id" value="<?= (int)$detail['id'] ?>">
+                    <input type="hidden" name="project_id" value="<?= $projectId ?>">
+                    <label class="field">Bình luận<textarea name="body" required maxlength="2000"></textarea></label>
+                    <button>Gửi bình luận</button>
+                </form>
+                <?php if (canTestIssue($role) && (string)$detail['status'] !== 'closed'): ?>
+                    <form method="post" class="panel">
+                        <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
+                        <input type="hidden" name="action" value="test">
+                        <input type="hidden" name="id" value="<?= (int)$detail['id'] ?>">
+                        <input type="hidden" name="project_id" value="<?= $projectId ?>">
+                        <label class="field">Kết quả kiểm thử
+                            <select name="result">
+                                <?php foreach (testResults() as $value): ?>
+                                    <option value="<?= h($value) ?>"><?= h($value) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="field">Ghi chú<textarea name="notes" maxlength="5000"></textarea></label>
+                        <button>Lưu kết quả</button>
+                    </form>
+                <?php endif; ?>
+            </div>
+
+            <h3>Bình luận</h3>
+            <?php if ($comments === []): ?>
+                <p class="muted">Chưa có bình luận.</p>
+            <?php else: ?>
+                <?php foreach ($comments as $comment): ?>
+                    <p><?= h($comment['full_name']) ?>: <?= nl2br(h($comment['body'])) ?>
+                        <span class="muted"><?= h($comment['created_at']) ?></span>
+                    </p>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <h3>Kết quả kiểm thử</h3>
+            <?php if ($testResults === []): ?>
+                <p class="muted">Chưa có kết quả kiểm thử.</p>
+            <?php else: ?>
+                <?php foreach ($testResults as $test): ?>
+                    <p>
+                        <span class="pill <?= h($test['result']) === 'passed' ? 'ok' : 'bad' ?>"><?= h($test['result']) ?></span>
+                        <?= h($test['notes']) ?> · <?= h($test['tester_name']) ?>
+                        · phiên bản test: <?= (int)$test['issue_version'] ?>
+                        <?php if (!(bool)$test['is_current']): ?>
+                            <span class="pill warn">đã lỗi thời</span>
+                        <?php endif; ?>
+                    </p>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
+    <section class="panel">
+        <h2>Danh sách công việc (<?= count($issues) ?>)</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Tiêu đề</th><th>Ưu tiên</th><th>Trạng thái</th><th>Phụ trách</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($issues as $issue): ?>
+                    <tr data-priority="<?= h($issue['priority']) ?>">
+                        <td>#<?= (int)$issue['id'] ?></td>
+                        <td><?= h($issue['title']) ?></td>
+                        <td><span class="pill"><?= h($issue['priority']) ?></span></td>
+                        <td><span class="pill"><?= h($issue['status']) ?></span></td>
+                        <td><?= h($issue['assignee'] ?? 'Chưa phân công') ?></td>
+                        <td><a href="?project_id=<?= $projectId ?>&id=<?= (int)$issue['id'] ?>">Mở / sửa</a></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+<?php endif; ?>
+<?php pageEnd(); ?>
