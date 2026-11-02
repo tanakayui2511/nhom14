@@ -1,0 +1,37 @@
+:root {
+    --primary: #2457a7;
+    --on-primary: #ffffff;
+    --primary-hover: #1d478a;
+    --primary-container: #e8eef8;
+    --primary-container-hover: #d8e4f5;
+    --on-primary-container: #1d3f72;
+    --surface: #f5f7fb;
+    --on-surface: #172033;
+    --surface-panel: #ffffff;
+    --on-surface-variant: #596579;
+    --outline: #bac6d5;
+    --outline-variant: #dbe2ea;
+    --divider: #e0e6ee;
+    --header: #172b4d;
+    --on-header: #ffffff;
+    --on-header-muted: #d7e2f0;
+    --footer: #667085;
+    --error: #b42318;
+    --on-error: #ffffff;
+    --error-hover: #961c12;
+    --error-container: #fff0f0;
+    --error-outline: #e5a4a4;
+    --success-container: #effaf0;
+    --success-outline: #9acb9f;
+    --success-container-strong: #dcfce7;
+    --success-text: #166534;
+    --warning-container: #fef3c7;
+    --warning-text: #92400e;
+    --danger-container: #fee2e2;
+    --danger-text: #991b1b;
+    --headline: 1.75rem;
+    --title: 1.25rem;
+    --subtitle: 1.0625rem;
+    --body: 1rem;
+    --label: .875rem;
+}

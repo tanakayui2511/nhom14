@@ -1,0 +1,17 @@
+# Local data and credentials
+.local/
+**/.local/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.log
+*.tmp
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.vscode/
