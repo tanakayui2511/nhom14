@@ -283,37 +283,120 @@ function redirect(string $target, int $status = 303): never
     exit;
 }
 
+/** Brand logo (git-branch mark), stroke = currentColor. */
+function brandLogoSvg(): string
+{
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+        . '<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M6 8.2v7.6"/>'
+        . '<path d="M6 13h5a4 4 0 0 0 4-4V7.6"/><circle cx="15" cy="5.2" r="2.4" fill="currentColor" stroke="none"/></svg>';
+}
+
 function pageStart(string $title): void
 {
     $user = currentUser();
     $flash = consumeFlash();
+    $script = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    // The login page uses a centered card layout and prints its own heading.
+    $isAuthPage = $script === 'login.php';
+    $activeScript = $script === 'release-notes.php' ? 'releases.php' : $script;
+    $subtitles = [
+        'index.php' => 'Tổng hợp dự án, công việc và phiên bản bạn đang tham gia.',
+        'projects.php' => 'Quản lý dự án, thành viên và vai trò trong từng dự án.',
+        'issues.php' => 'Theo dõi lỗi, phân công, bình luận và kết quả kiểm thử.',
+        'dependencies.php' => 'Quan hệ tiên quyết giữa các công việc và những việc đang bị chặn.',
+        'releases.php' => 'Lập kế hoạch phiên bản, kiểm tra điều kiện và chốt phát hành.',
+        'release-notes.php' => 'Ghi chú phát hành được tạo từ snapshot đã chốt.',
+        'audit.php' => 'Nhật ký thao tác của dự án: chỉ ghi thêm, không sửa.',
+    ];
+    // Nav: [href, label, inline SVG paths on a 24px grid].
+    $navItems = [
+        'index.php' => ['/', 'Tổng quan', '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/>'],
+        'projects.php' => ['/projects.php', 'Dự án', '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/>'],
+        'issues.php' => ['/issues.php', 'Lỗi & công việc', '<rect x="7" y="8" width="10" height="12" rx="5"/><path d="M12 8V5M9 5.5 7.5 4M15 5.5 16.5 4M7 13H3.5M20.5 13H17M7.5 17.5 5 19.5M16.5 17.5 19 19.5"/>'],
+        'dependencies.php' => ['/dependencies.php', 'Phụ thuộc', '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.4 8.3 10.9 15.6M16.6 8.3 13.1 15.6"/>'],
+        'releases.php' => ['/releases.php', 'Phiên bản phát hành', '<path d="M3 12V4.5A1.5 1.5 0 0 1 4.5 3H12l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>'],
+        'audit.php' => ['/audit.php', 'Lịch sử', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ];
+    $accents = ['indigo' => 'Indigo', 'ocean' => 'Xanh biển', 'forest' => 'Xanh lá', 'sunset' => 'Cam', 'rose' => 'Hồng'];
+
+    // Runs before the CSS so the page never flashes the wrong theme or accent.
+    $boot = '<script>(function(){var d=document.documentElement,t=null,a=null;d.classList.add("js");'
+        . 'try{t=localStorage.getItem("rt-theme");a=localStorage.getItem("rt-accent")}catch(e){}'
+        . 'if(t!=="light"&&t!=="dark"){t=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}'
+        . 'if(!/^(indigo|ocean|forest|sunset|rose)$/.test(a||"")){a="indigo"}'
+        . 'd.setAttribute("data-theme",t);d.setAttribute("data-accent",a)})();</script>';
+
     echo '<!doctype html><html lang="vi"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<meta name="color-scheme" content="light dark">'
         . '<title>' . h($title) . ' · ReleaseTracker</title>'
-        . '<link rel="stylesheet" href="/assets/css/tokens.css">'
-        . '<link rel="stylesheet" href="/assets/css/app.css">'
-        . '</head><body>'
-        . '<header class="site-header"><strong>ReleaseTracker</strong>'
-        . '<p>Theo dõi lỗi · Quản lý kế hoạch phát hành phần mềm</p></header>'
-        . '<nav class="main-nav">'
-        . '<a href="/">Tổng quan</a>'
-        . '<a href="/projects.php">Dự án</a>'
-        . '<a href="/issues.php">Lỗi &amp; công việc</a>'
-        . '<a href="/dependencies.php">Phụ thuộc</a>'
-        . '<a href="/releases.php">Phiên bản phát hành</a>'
-        . '<a href="/audit.php">Lịch sử</a>';
-    if ($user !== null) {
-        echo '<span class="user-name">' . h($user['full_name']) . '</span>'
-            . '<form method="post" action="/logout.php">'
-            . '<input type="hidden" name="csrf" value="' . h(csrfToken()) . '">'
-            . '<button class="link-button" type="submit">Đăng xuất</button></form>';
-    } else {
-        echo '<a class="login-link" href="/login.php">Đăng nhập</a>';
+        . $boot
+        . '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        . '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        . '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap">'
+        . '<link rel="stylesheet" href="/assets/css/tokens.css?v=4">'
+        . '<link rel="stylesheet" href="/assets/css/app.css?v=4">'
+        . '<script src="/assets/js/theme.js?v=4" defer></script>'
+        . '</head><body' . ($isAuthPage ? ' class="auth-page"' : '') . '>'
+        . '<a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>'
+        . '<header class="site-header"><div class="header-inner">'
+        . '<a class="brand" href="/" aria-label="ReleaseTracker – Tổng quan">'
+        . '<span class="brand-mark">' . brandLogoSvg() . '</span>'
+        . '<span class="brand-text"><strong>Release<span class="brand-em">Tracker</span></strong>'
+        . '<span class="brand-tagline">Theo dõi lỗi · Quản lý kế hoạch phát hành</span></span></a>';
+    if (!$isAuthPage) {
+        echo '<nav class="main-nav" aria-label="Điều hướng chính">';
+        foreach ($navItems as $file => [$href, $label, $paths]) {
+            $current = $file === $activeScript ? ' aria-current="page"' : '';
+            echo '<a href="' . h($href) . '"' . $current . '>'
+                . '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+                . $paths . '</svg><span>' . h($label) . '</span></a>';
+        }
+        echo '</nav>';
     }
-    echo '</nav><main><h1>' . h($title) . '</h1>';
+    echo '<div class="header-actions"><div class="accent-picker" role="group" aria-label="Màu chủ đạo">';
+    foreach ($accents as $key => $label) {
+        echo '<button type="button" class="accent-dot accent-' . h($key) . '" data-accent-option="' . h($key) . '"'
+            . ' aria-pressed="' . ($key === 'indigo' ? 'true' : 'false') . '" aria-label="' . h('Màu ' . $label) . '" title="' . h($label) . '"></button>';
+    }
+    echo '</div>'
+        . '<button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Chuyển sang chế độ tối">'
+        . '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z"/></svg>'
+        . '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>'
+        . '<span class="theme-label" data-theme-label>Tối</span></button>';
+    if (!$isAuthPage) {
+        if ($user !== null) {
+            // Avatar: initials of first + last word, color picked from a hash of the name.
+            $fullName = trim((string)$user['full_name']);
+            $words = preg_split('/\s+/u', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $initials = '';
+            foreach (count($words) > 1 ? [$words[0], $words[count($words) - 1]] : $words as $word) {
+                if (preg_match('/^\X/u', $word, $match) === 1) {
+                    $initials .= $match[0];
+                }
+            }
+            $initials = function_exists('mb_strtoupper') ? mb_strtoupper($initials, 'UTF-8') : strtoupper($initials);
+            $tones = ['indigo', 'sky', 'emerald', 'amber', 'rose', 'violet'];
+            $tone = $tones[crc32($fullName) % count($tones)];
+            echo '<span class="user-chip"><span class="avatar tone-' . h($tone) . '" aria-hidden="true">' . h($initials !== '' ? $initials : '?') . '</span>'
+                . '<span class="user-name">' . h($user['full_name']) . '</span></span>'
+                . '<form method="post" action="/logout.php">'
+                . '<input type="hidden" name="csrf" value="' . h(csrfToken()) . '">'
+                . '<button class="link-button" type="submit">Đăng xuất</button></form>';
+        } else {
+            echo '<a class="login-link" href="/login.php">Đăng nhập</a>';
+        }
+    }
+    echo '</div></div></header><main id="main-content" tabindex="-1">';
+    if (!$isAuthPage) {
+        $subtitle = $subtitles[$script] ?? '';
+        echo '<div class="page-head"><h1>' . h($title) . '</h1>'
+            . ($subtitle !== '' ? '<p class="page-subtitle">' . h($subtitle) . '</p>' : '') . '</div>';
+    }
     foreach ($flash as $message) {
-        $class = ($message['type'] ?? '') === 'error' ? 'error' : 'ok';
-        echo '<p class="' . h($class) . '">' . nl2br(h($message['message'] ?? '')) . '</p>';
+        $isError = ($message['type'] ?? '') === 'error';
+        echo '<p class="' . ($isError ? 'error' : 'ok') . '" role="' . ($isError ? 'alert' : 'status') . '">'
+            . nl2br(h($message['message'] ?? '')) . '</p>';
     }
 }
 

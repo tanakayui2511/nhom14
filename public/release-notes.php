@@ -46,7 +46,7 @@ pageStart('Ghi chú phát hành');
 ?>
 <section class="panel">
     <p><b>Dự án:</b> <?= h($displayProjectName) ?></p>
-    <p><b>Phiên bản:</b> <?= h($release['version_name']) ?> · <span class="pill"><?= h($release['status']) ?></span></p>
+    <p><b>Phiên bản:</b> <?= h($release['version_name']) ?> · <span class="pill release-<?= h($release['status']) ?>"><?= h($release['status']) ?></span></p>
     <p><?= nl2br(h($release['description'])) ?></p>
     <?php if ($release['status'] !== 'released'): ?>
         <p class="muted">Đây là bản nháp; ghi chú chỉ bất biến sau khi chốt phát hành.</p>

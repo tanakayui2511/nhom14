@@ -184,7 +184,7 @@ if ($error !== '') {
                     <?php foreach ($releases as $release): ?>
                         <tr>
                             <td><?= h($release['version_name']) ?> — <?= h($release['description']) ?></td>
-                            <td><span class="pill"><?= h($release['status']) ?></span></td>
+                            <td><span class="pill release-<?= h($release['status']) ?>"><?= h($release['status']) ?></span></td>
                             <td><?= (int)$release['item_count'] ?></td>
                             <td>
                                 <a href="?project_id=<?= $projectId ?>&id=<?= (int)$release['id'] ?>">Chi tiết</a> ·
@@ -201,7 +201,7 @@ if ($error !== '') {
     <?php if ($selectedRelease !== null): ?>
         <?php $release = $selectedRelease; ?>
         <section class="panel">
-            <h2>Chi tiết <?= h($release['version_name']) ?> · <span class="pill"><?= h($release['status']) ?></span></h2>
+            <h2>Chi tiết <?= h($release['version_name']) ?> · <span class="pill release-<?= h($release['status']) ?>"><?= h($release['status']) ?></span></h2>
             <p><?= h($release['description']) ?></p>
 
             <?php if ($check !== null): ?>

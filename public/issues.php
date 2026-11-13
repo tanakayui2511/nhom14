@@ -223,8 +223,8 @@ if ($conflict && $selected > 0 && $projectId > 0) {
             <p><?= nl2br(h($detail['description'])) ?></p>
             <p><b>Các bước tái hiện:</b> <?= nl2br(h($detail['reproduction_steps'])) ?></p>
             <p>
-                Trạng thái: <span class="pill"><?= h($detail['status']) ?></span> ·
-                Ưu tiên: <span class="pill"><?= h($detail['priority']) ?></span> ·
+                Trạng thái: <span class="pill status-<?= h($detail['status']) ?>"><?= h($detail['status']) ?></span> ·
+                Ưu tiên: <span class="pill priority-<?= h($detail['priority']) ?>"><?= h($detail['priority']) ?></span> ·
                 Phiên bản dữ liệu: <?= (int)$detail['version'] ?> ·
                 Người phụ trách: <?= h($detail['assignee'] ?? 'Chưa phân công') ?> ·
                 Người báo cáo: <?= h($detail['reporter'] ?? 'Không xác định') ?>
@@ -345,8 +345,8 @@ if ($conflict && $selected > 0 && $projectId > 0) {
                     <tr>
                         <td>#<?= (int)$issue['id'] ?></td>
                         <td><?= h($issue['title']) ?></td>
-                        <td><span class="pill"><?= h($issue['priority']) ?></span></td>
-                        <td><?= h($issue['status']) ?></td>
+                        <td><span class="pill priority-<?= h($issue['priority']) ?>"><?= h($issue['priority']) ?></span></td>
+                        <td><span class="pill status-<?= h($issue['status']) ?>"><?= h($issue['status']) ?></span></td>
                         <td><?= h($issue['assignee'] ?? 'Chưa phân công') ?></td>
                         <td><a href="?project_id=<?= $projectId ?>&id=<?= (int)$issue['id'] ?>">Mở / sửa</a></td>
                     </tr>

@@ -84,28 +84,60 @@ pageStart('Tổng quan');
         <p>Bạn chưa thuộc dự án nào. Hãy liên hệ admin để được thêm vào dự án.</p>
     </section>
 <?php else: ?>
-    <section class="grid">
+    <section class="grid project-grid">
         <?php foreach ($summaries as $summary): ?>
-            <?php $project = $summary['project']; ?>
-            <article class="panel">
-                <h2><?= h($project['name']) ?></h2>
-                <p class="muted"><?= h($project['description']) ?> · vai trò: <?= h($project['role']) ?></p>
-                <p>
-                    <span class="pill"><?= (int)$summary['issues']['total'] ?> công việc</span>
-                    <span class="pill warn"><?= (int)$summary['issues']['active'] ?> đang mở</span>
-                    <span class="pill bad"><?= (int)$summary['issues']['critical'] ?> nghiêm trọng</span>
-                </p>
-                <p>
-                    <span class="pill"><?= (int)$summary['releases']['planned'] ?> dự kiến</span>
-                    <span class="pill warn"><?= (int)$summary['releases']['ready'] ?> sẵn sàng</span>
-                    <span class="pill ok"><?= (int)$summary['releases']['released'] ?> đã phát hành</span>
-                    <span class="pill <?= $summary['blocked'] > 0 ? 'bad' : '' ?>"><?= $summary['blocked'] ?> bị chặn</span>
-                </p>
-                <p>
+            <?php
+            $project = $summary['project'];
+            // Presentation only: derived counts and bar widths for the card.
+            $total = (int)$summary['issues']['total'];
+            $active = (int)$summary['issues']['active'];
+            $done = max(0, $total - $active);
+            $donePercent = $total > 0 ? (int)round($done * 100 / $total) : 0;
+            $planned = (int)$summary['releases']['planned'];
+            $ready = (int)$summary['releases']['ready'];
+            $released = (int)$summary['releases']['released'];
+            $releaseTotal = $planned + $ready + $released;
+            $releaseWidth = static fn(int $count): int => $releaseTotal > 0 ? (int)round($count * 100 / $releaseTotal) : 0;
+            ?>
+            <article class="panel project-card">
+                <div class="project-card-head">
+                    <h2><?= h($project['name']) ?></h2>
+                    <span class="pill tone-violet">vai trò: <?= h($project['role']) ?></span>
+                </div>
+                <p class="muted"><?= h($project['description']) ?></p>
+                <div class="summary-grid" aria-label="Thống kê công việc">
+                    <div class="summary-card tone-indigo"><strong><?= $total ?></strong><span>Công việc</span></div>
+                    <div class="summary-card tone-sky"><strong><?= $active ?></strong><span>Đang mở</span></div>
+                    <div class="summary-card tone-emerald"><strong><?= $done ?></strong><span>Hoàn tất</span></div>
+                    <div class="summary-card tone-amber"><strong><?= (int)$summary['issues']['critical'] ?></strong><span>Nghiêm trọng</span></div>
+                    <div class="summary-card tone-rose"><strong><?= (int)$summary['blocked'] ?></strong><span>Bị chặn</span></div>
+                </div>
+                <div class="stat-row">
+                <div class="stat-block">
+                    <div class="stat-label"><span>Tiến độ hoàn tất</span><span><?= $donePercent ?>%</span></div>
+                    <div class="stat-bar" role="img" aria-label="<?= h('Hoàn tất ' . $done . '/' . $total . ' công việc') ?>">
+                        <span class="tone-emerald" style="width: <?= $donePercent ?>%"></span>
+                    </div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-label"><span>Phiên bản</span><span class="muted"><?= $releaseTotal ?> phiên bản</span></div>
+                    <div class="stat-bar" role="img" aria-label="<?= h($planned . ' dự kiến, ' . $ready . ' sẵn sàng, ' . $released . ' đã phát hành') ?>">
+                        <span class="tone-sky" style="width: <?= $releaseWidth($planned) ?>%"></span>
+                        <span class="tone-amber" style="width: <?= $releaseWidth($ready) ?>%"></span>
+                        <span class="tone-emerald" style="width: <?= $releaseWidth($released) ?>%"></span>
+                    </div>
+                    <div class="stat-legend">
+                        <span class="pill release-planned"><?= $planned ?> dự kiến</span>
+                        <span class="pill release-ready"><?= $ready ?> sẵn sàng</span>
+                        <span class="pill release-released"><?= $released ?> đã phát hành</span>
+                    </div>
+                </div>
+                </div>
+                <div class="card-actions">
                     <a class="btn secondary" href="/issues.php?project_id=<?= (int)$project['id'] ?>">Công việc</a>
                     <a class="btn secondary" href="/releases.php?project_id=<?= (int)$project['id'] ?>">Phiên bản</a>
                     <a class="btn secondary" href="/dependencies.php?project_id=<?= (int)$project['id'] ?>">Phụ thuộc</a>
-                </p>
+                </div>
             </article>
         <?php endforeach; ?>
     </section>
@@ -116,14 +148,15 @@ pageStart('Tổng quan');
             <?php if ($assigned === []): ?>
                 <p class="muted">Không có công việc đang mở được giao cho bạn.</p>
             <?php else: ?>
-                <ul>
+                <ul class="item-list">
                     <?php foreach ($assigned as $issue): ?>
                         <li>
                             <a href="/issues.php?project_id=<?= (int)$issue['project_id'] ?>&id=<?= (int)$issue['id'] ?>">
                                 #<?= (int)$issue['id'] ?> <?= h($issue['title']) ?>
                             </a>
-                            <span class="pill"><?= h($issue['priority']) ?></span>
-                            <span class="muted"><?= h($issue['project_name']) ?> · <?= h($issue['status']) ?></span>
+                            <span class="pill priority-<?= h($issue['priority']) ?>"><?= h($issue['priority']) ?></span>
+                            <span class="pill status-<?= h($issue['status']) ?>"><?= h($issue['status']) ?></span>
+                            <span class="muted"><?= h($issue['project_name']) ?></span>
                         </li>
                     <?php endforeach; ?>
                 </ul>
@@ -135,13 +168,13 @@ pageStart('Tổng quan');
             <?php if ($recentReleases === []): ?>
                 <p class="muted">Chưa có phiên bản.</p>
             <?php else: ?>
-                <ul>
+                <ul class="item-list">
                     <?php foreach ($recentReleases as $release): ?>
                         <li>
                             <a href="/release-notes.php?id=<?= (int)$release['id'] ?>">
                                 <?= h($release['version_name']) ?>
                             </a>
-                            <span class="pill"><?= h($release['status']) ?></span>
+                            <span class="pill release-<?= h($release['status']) ?>"><?= h($release['status']) ?></span>
                             <span class="muted"><?= h($release['project_name']) ?></span>
                         </li>
                     <?php endforeach; ?>

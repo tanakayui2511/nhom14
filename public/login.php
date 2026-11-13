@@ -41,23 +41,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$demoUsers = ['admin_a', 'dev_a', 'tester_a', 'release_a', 'dev_b'];
+
 pageStart('Đăng nhập');
-if ($error !== '') {
-    echo '<p class="error">' . h($error) . '</p>';
-}
 ?>
-<section class="panel">
-    <p>Đăng nhập để thao tác trong dự án được phân công.</p>
-    <form method="post">
+<div class="auth-wrap">
+<div class="auth-logo"><?= brandLogoSvg() ?></div>
+<section class="auth-card">
+    <h1>Đăng nhập</h1>
+    <p class="auth-intro">Đăng nhập để thao tác trong dự án được phân công.</p>
+    <?php if ($error !== ''): ?>
+        <p class="error" role="alert"><?= h($error) ?></p>
+    <?php endif; ?>
+    <form method="post" id="login-form">
         <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
-        <label class="field">Tên đăng nhập
-            <input name="username" required maxlength="60" autocomplete="username" value="<?= h($username) ?>">
-        </label>
-        <label class="field">Mật khẩu
-            <input type="password" name="password" required autocomplete="current-password">
-        </label>
-        <button>Đăng nhập</button>
+        <label class="field" for="login-username">Tên đăng nhập</label>
+        <input class="auth-input" id="login-username" name="username" required maxlength="60"
+               autocomplete="username" value="<?= h($username) ?>" autofocus>
+        <label class="field" for="login-password">Mật khẩu</label>
+        <input class="auth-input" id="login-password" type="password" name="password" required
+               autocomplete="current-password">
+        <button type="submit" class="auth-submit">Đăng nhập</button>
     </form>
-    <p class="muted">Tài khoản demo: admin_a, dev_a, tester_a, release_a, dev_b · Mật khẩu: demo1234</p>
+    <div class="demo-box">
+        <p>Tài khoản demo — bấm để điền sẵn (mật khẩu: <b>demo1234</b>)</p>
+        <div class="demo-list">
+            <?php foreach ($demoUsers as $demoUser): ?>
+                <button type="button" class="secondary" data-demo-user="<?= h($demoUser) ?>"><?= h($demoUser) ?></button>
+            <?php endforeach; ?>
+        </div>
+    </div>
 </section>
+</div>
+<script>
+// Demo buttons fill both fields; the user then presses "Đăng nhập".
+document.querySelectorAll('[data-demo-user]').forEach(function (button) {
+    button.addEventListener('click', function () {
+        document.getElementById('login-username').value = button.getAttribute('data-demo-user');
+        var password = document.getElementById('login-password');
+        password.value = 'demo1234';
+        password.focus();
+    });
+});
+</script>
 <?php pageEnd(); ?>

@@ -119,10 +119,20 @@ $graphNodes = array_map(static function (array $issue) use ($blockedIds, $projec
         'url' => '/issues.php?project_id=' . (int)$projectId . '&id=' . $id,
     ];
 }, $visibleIssues);
-$graphEdges = array_map(static function (array $dependency): array {
+// Edges on the detected cycle are drawn dashed in the graph (presentation only).
+$cycleEdges = [];
+if ($cycle !== null) {
+    for ($i = 0, $n = count($cycle) - 1; $i < $n; $i++) {
+        $cycleEdges[(int)$cycle[$i] . '>' . (int)$cycle[$i + 1]] = true;
+    }
+}
+$graphEdges = array_map(static function (array $dependency) use ($cycleEdges): array {
+    $source = (int)$dependency['issue_id'];
+    $target = (int)$dependency['depends_on_id'];
     return [
-        'source' => (int)$dependency['issue_id'],
-        'target' => (int)$dependency['depends_on_id'],
+        'source' => $source,
+        'target' => $target,
+        'in_cycle' => isset($cycleEdges[$source . '>' . $target]),
     ];
 }, $visibleDependencies);
 $blockedCount = count(array_filter($visibleIssues, static fn(array $issue): bool => isset($blockedIds[(int)$issue['id']])));
@@ -170,11 +180,11 @@ if ($error !== '') {
         </div>
 
         <div class="summary-grid" aria-label="Tóm tắt graph">
-            <div class="summary-card"><strong><?= count($visibleIssues) ?></strong><span>Issue trong graph</span></div>
-            <div class="summary-card"><strong><?= count($visibleDependencies) ?></strong><span>Dependency</span></div>
-            <div class="summary-card"><strong><?= $blockedCount ?></strong><span>Đang bị chặn</span></div>
-            <div class="summary-card"><strong><?= $completeCount ?></strong><span>Đã hoàn thành</span></div>
-            <div class="summary-card"><strong><?= count($visibleIssues) - $completeCount ?></strong><span>Chưa hoàn thành</span></div>
+            <div class="summary-card tone-indigo"><strong><?= count($visibleIssues) ?></strong><span>Issue trong graph</span></div>
+            <div class="summary-card tone-violet"><strong><?= count($visibleDependencies) ?></strong><span>Dependency</span></div>
+            <div class="summary-card tone-rose"><strong><?= $blockedCount ?></strong><span>Đang bị chặn</span></div>
+            <div class="summary-card tone-emerald"><strong><?= $completeCount ?></strong><span>Đã hoàn thành</span></div>
+            <div class="summary-card tone-sky"><strong><?= count($visibleIssues) - $completeCount ?></strong><span>Chưa hoàn thành</span></div>
         </div>
 
         <form class="graph-filters" method="get" role="search">
@@ -205,7 +215,18 @@ if ($error !== '') {
         </form>
 
         <?php if ($visibleIssues === []): ?>
-            <div class="empty-state"><p>Không có issue phù hợp với bộ lọc hiện tại.</p></div>
+            <div class="empty-state">
+                <svg class="empty-illus" viewBox="0 0 96 72" aria-hidden="true" focusable="false">
+                    <ellipse class="ei-shadow" cx="48" cy="64" rx="34" ry="6"/>
+                    <path class="ei-box" d="M18 30h60v28a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4z"/>
+                    <path class="ei-flap" d="M18 30 30 16h36l12 14z"/>
+                    <path class="ei-line" d="M36 44h24M40 51h16"/>
+                    <circle class="ei-spark" cx="80" cy="12" r="3"/>
+                    <circle class="ei-spark" cx="14" cy="18" r="2"/>
+                </svg>
+                <p class="empty-title">Không có issue phù hợp với bộ lọc hiện tại.</p>
+                <p class="muted">Thử bỏ bớt điều kiện lọc hoặc bấm “Xóa lọc”.</p>
+            </div>
         <?php else: ?>
             <div class="graph-toolbar" aria-label="Công cụ graph">
                 <button type="button" class="secondary" data-graph-zoom="in" title="Phóng to">+</button>
@@ -220,7 +241,13 @@ if ($error !== '') {
                         <desc id="dependency-graph-description">Các node là issue. Mũi tên đi từ issue phụ thuộc đến issue tiên quyết.</desc>
                         <defs>
                             <marker id="dependency-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                                <path d="M0,0 L0,6 L9,3 z" fill="currentColor"></path>
+                                <path class="graph-arrow" d="M0,0 L0,6 L9,3 z"></path>
+                            </marker>
+                            <marker id="dependency-arrow-active" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <path class="graph-arrow-active" d="M0,0 L0,6 L9,3 z"></path>
+                            </marker>
+                            <marker id="dependency-arrow-cycle" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <path class="graph-arrow-cycle" d="M0,0 L0,6 L9,3 z"></path>
                             </marker>
                         </defs>
                         <g data-graph-layer></g>
@@ -234,10 +261,12 @@ if ($error !== '') {
             <div class="graph-legend" aria-label="Chú giải trạng thái">
                 <span><i class="status-dot status-open"></i> open</span>
                 <span><i class="status-dot status-in_progress"></i> in_progress</span>
+                <span><i class="status-dot status-resolved"></i> resolved</span>
                 <span><i class="status-dot status-retest"></i> retest</span>
                 <span><i class="status-dot status-verified"></i> verified</span>
                 <span><i class="status-dot status-closed"></i> closed</span>
                 <span><i class="status-dot status-blocked"></i> blocked</span>
+                <span><i class="graph-legend-cycle"></i> cạnh thuộc chu trình</span>
             </div>
             <details class="graph-fallback">
                 <summary>Bảng dependency dự phòng</summary>
@@ -296,7 +325,7 @@ if ($error !== '') {
                 <?php foreach ($blocked as $row): ?>
                     <li>#<?= (int)$row['id'] ?> <?= h($row['title']) ?>
                         đang chờ #<?= (int)$row['blocked_by_id'] ?> <?= h($row['blocked_by']) ?>
-                        <span class="pill"><?= h($row['dependency_status']) ?></span>
+                        <span class="pill status-<?= h($row['dependency_status']) ?>"><?= h($row['dependency_status']) ?></span>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -313,7 +342,7 @@ if ($error !== '') {
                     <li>
                         #<?= (int)$dependency['issue_id'] ?> <?= h($dependency['issue_title']) ?>
                         phụ thuộc #<?= (int)$dependency['depends_on_id'] ?> <?= h($dependency['dependency_title']) ?>
-                        <span class="pill"><?= h($dependency['dependency_status']) ?></span>
+                        <span class="pill status-<?= h($dependency['dependency_status']) ?>"><?= h($dependency['dependency_status']) ?></span>
                         <?php if ($canChange): ?>
                             <form method="post" class="inline-form">
                                 <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
@@ -379,14 +408,15 @@ if ($error !== '') {
             const endX = target.x + cardWidth / 2;
             const endY = target.y;
             const midY = (startY + endY) / 2;
-            return `<path class="graph-edge${highlighted ? ' is-highlighted' : ''}" d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}" data-source="${edge.source}" data-target="${edge.target}" />`;
+            return `<path class="graph-edge${highlighted ? ' is-highlighted' : ''}${edge.in_cycle ? ' is-cycle' : ''}" d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}" data-source="${edge.source}" data-target="${edge.target}" />`;
         }).join('');
         const nodeMarkup = nodes.map((node) => {
             const point = positions.get(node.id);
             const selected = node.id === selectedId;
             const statusClass = node.is_blocked ? 'blocked' : node.status;
             return `<g class="graph-node status-${esc(statusClass)}${selected ? ' is-selected' : ''}" tabindex="0" role="button" aria-label="Issue #${node.id}: ${esc(node.title)}" data-node-id="${node.id}" transform="translate(${point.x} ${point.y})">
-                <rect width="${cardWidth}" height="${cardHeight}" rx="8"></rect>
+                <rect width="${cardWidth}" height="${cardHeight}" rx="10"></rect>
+                <circle class="graph-node-dot" cx="${cardWidth - 16}" cy="16" r="5"></circle>
                 <text class="graph-node-id" x="12" y="20">#${node.id} · ${esc(node.priority)}</text>
                 <text class="graph-node-title" x="12" y="42">${esc(node.title).slice(0, 28)}</text>
                 <text class="graph-node-status" x="12" y="64">${esc(node.is_blocked ? 'blocked' : node.status)}</text>
@@ -394,7 +424,8 @@ if ($error !== '') {
         }).join('');
         layer.innerHTML = edgeMarkup + nodeMarkup;
         layer.querySelectorAll('[data-node-id]').forEach((element) => {
-            const select = () => selectNode(Number(element.dataset.nodeId));
+            const id = Number(element.dataset.nodeId);
+            const select = () => selectNode(id);
             element.addEventListener('click', select);
             element.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -402,6 +433,32 @@ if ($error !== '') {
                     select();
                 }
             });
+            // Hover/focus highlights the node and its direct edges; others fade.
+            element.addEventListener('mouseenter', () => emphasize(id));
+            element.addEventListener('focus', () => emphasize(id));
+            element.addEventListener('mouseleave', () => emphasize(selectedNodeId));
+            element.addEventListener('blur', () => emphasize(selectedNodeId));
+        });
+        emphasize(selectedId);
+    };
+
+    let selectedNodeId = null;
+    const emphasize = (id) => {
+        const related = new Set();
+        if (id !== null) {
+            related.add(id);
+            edges.forEach((edge) => {
+                if (edge.source === id) related.add(edge.target);
+                if (edge.target === id) related.add(edge.source);
+            });
+        }
+        layer.classList.toggle('graph-layer-focus', id !== null);
+        layer.querySelectorAll('[data-node-id]').forEach((element) => {
+            element.classList.toggle('is-related', related.has(Number(element.dataset.nodeId)));
+        });
+        layer.querySelectorAll('.graph-edge').forEach((element) => {
+            const touches = Number(element.dataset.source) === id || Number(element.dataset.target) === id;
+            element.classList.toggle('is-related', id !== null && touches);
         });
     };
 
@@ -430,6 +487,7 @@ if ($error !== '') {
             <h4>Công việc phụ thuộc vào issue này</h4>${list(dependents)}
             <a class="btn secondary" href="${esc(node.url)}">Mở chi tiết issue</a>`;
         selectionStatus.textContent = `Đang chọn issue #${node.id}`;
+        selectedNodeId = id;
         draw(id);
     };
 
