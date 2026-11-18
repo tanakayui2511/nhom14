@@ -6,7 +6,7 @@ ReleaseTracker được phát hành theo giấy phép MIT (xem `LICENSE`).
 
 - **Lab 05 — FIT4111 Teaching Examples** (bản quyền © 2026 FIT4111 Teaching Examples Contributors, giấy phép MIT).
   Dự án kế thừa cấu trúc thư mục (`src/`, `public/`, `database/`, `tests/`), script `lab.sh`, các hàm tiện ích kết nối PostgreSQL (`src/Database.php`), công cụ `tools/db-config.php`, `tools/db-check.php`, `tools/migrate.php`, `tools/seed.php` và khung test (`tests/helper.php`). Các file đặc thù của lab CommunityPass (đăng ký sự kiện) đã được gỡ bỏ.
-- Phần nghiệp vụ theo dõi lỗi, đồ thị phụ thuộc, điều kiện phát hành, snapshot, giao diện và bộ kiểm thử do nhóm **[Tên nhóm]** phát triển cho Đề tài 5.
+- Phần nghiệp vụ theo dõi lỗi, đồ thị phụ thuộc, điều kiện phát hành, snapshot, giao diện và bộ kiểm thử do nhóm **Nhom14** phát triển cho Đề tài 5.
 
 ## Tài nguyên bên thứ ba
 
