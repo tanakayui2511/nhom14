@@ -579,7 +579,7 @@ try {
         assertContains('data-graph-svg', $graph['body'], 'Dependency graph must render SVG');
         $emptyFilter = integrationHttp($port, 'GET', $path . '&q=__khong_co_issue__', [], $cookies);
         assertSame(200, $emptyFilter['status'], 'Empty graph filter must load');
-        assertContains('Không có issue phù hợp', $emptyFilter['body'], 'Graph must render empty state');
+        assertContains('Không có công việc phù hợp', $emptyFilter['body'], 'Graph must render empty state');
 
         $remove = [
             'action' => 'remove',
@@ -1086,7 +1086,10 @@ try {
         queryParams($connection, 'UPDATE projects SET name=$2 WHERE id=$1', [(string)$project, $renamed]);
         $after = integrationHttp($port, 'GET', '/release-notes.php?id=' . $release, [], $cookies);
         assertContains($originalName, $after['body'], 'Released HTML must keep the snapshotted project name');
-        assertNotContains($renamed, $after['body'], 'Released HTML must not show the renamed project');
+        // Ô chọn dự án trên thanh điều hướng hiển thị tên HIỆN TẠI (đó là điều hướng,
+        // không phải dữ liệu phát hành); chỉ kiểm tra phần nội dung chính.
+        $mainContent = substr($after['body'], (int)strpos($after['body'], '<main'));
+        assertNotContains($renamed, $mainContent, 'Released HTML must not show the renamed project');
 
         $markdown = integrationHttp($port, 'GET', '/release-notes.php?id=' . $release . '&format=markdown', [], $cookies);
         assertContains($originalName, $markdown['body'], 'Released Markdown must keep the snapshotted project name');
@@ -1099,7 +1102,7 @@ try {
         testAuthorizedReleaseSql($connection, "UPDATE releases SET status='released',released_at=now(),project_name_snapshot=NULL WHERE id=$1", [(string)$legacy]);
         $legacyResponse = integrationHttp($port, 'GET', '/release-notes.php?id=' . $legacy, [], $cookies);
         assertContains('[không có snapshot tên dự án lịch sử]', $legacyResponse['body'], 'Legacy released notes must disclose missing historical metadata');
-        assertNotContains($renamed, $legacyResponse['body'], 'Legacy released notes must not guess the current project name');
+        assertNotContains($renamed, substr($legacyResponse['body'], (int)strpos($legacyResponse['body'], '<main')), 'Legacy released notes must not guess the current project name');
 
         $forbiddenCookies = integrationLogin($port, 'dev_b');
         $forbidden = integrationHttp($port, 'GET', '/release-notes.php?id=' . $release, [], $forbiddenCookies);

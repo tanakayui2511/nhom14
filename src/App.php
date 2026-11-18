@@ -296,6 +296,109 @@ function redirect(string $target, int $status = 303): never
     exit;
 }
 
+/**
+ * Chọn dự án đang làm việc cho trang hiện tại.
+ *
+ * Ưu tiên: project_id gửi lên (POST/GET) → dự án đã nhớ trong session →
+ * dự án đầu tiên. Dự án gửi lên mà người dùng không phải thành viên thì trả
+ * 403. Lựa chọn được nhớ trong session để chuyển trang không bị mất, và được
+ * đưa lên thanh điều hướng (ô chọn dự án).
+ *
+ * @return array{0: array, 1: int, 2: ?string} [danh sách dự án, id đang chọn, vai trò]
+ */
+function selectProject(PgSql\Connection $connection, array $user): array
+{
+    $projects = queryAll(
+        $connection,
+        'SELECT p.id,p.name,p.description,pm.role
+         FROM projects p
+         JOIN project_members pm ON pm.project_id=p.id
+         WHERE pm.user_id=$1
+         ORDER BY p.id',
+        [(string)$user['id']]
+    );
+    $requested = $_POST['project_id'] ?? $_GET['project_id'] ?? null;
+    $projectId = 0;
+    if (is_string($requested) && $requested !== '') {
+        $projectId = (int)$requested;
+        requireProjectAccess($connection, $projectId, $user);
+    } else {
+        $remembered = (int)($_SESSION['project_id'] ?? 0);
+        foreach ($projects as $project) {
+            if ((int)$project['id'] === $remembered) {
+                $projectId = $remembered;
+            }
+        }
+        if ($projectId === 0 && $projects !== []) {
+            $projectId = (int)$projects[0]['id'];
+        }
+    }
+    $role = null;
+    foreach ($projects as $project) {
+        if ((int)$project['id'] === $projectId) {
+            $role = (string)$project['role'];
+        }
+    }
+    if ($role === null && $projectId > 0) {
+        $role = projectRole($connection, $projectId, $user);
+    }
+    if ($projectId > 0) {
+        $_SESSION['project_id'] = $projectId;
+    }
+    $GLOBALS['rt_nav'] = ['projects' => $projects, 'project_id' => $projectId, 'role' => $role];
+    return [$projects, $projectId, $role];
+}
+
+/** Hộp "trạng thái rỗng" có hình minh họa nhỏ và gợi ý thao tác tiếp theo. */
+function emptyState(string $title, string $hint = ''): string
+{
+    return '<div class="empty-state">'
+        . '<svg class="empty-illus" viewBox="0 0 96 72" aria-hidden="true" focusable="false">'
+        . '<ellipse class="ei-shadow" cx="48" cy="64" rx="34" ry="6"/>'
+        . '<path class="ei-box" d="M18 30h60v28a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4z"/>'
+        . '<path class="ei-flap" d="M18 30 30 16h36l12 14z"/>'
+        . '<path class="ei-line" d="M36 44h24M40 51h16"/></svg>'
+        . '<p class="empty-title">' . h($title) . '</p>'
+        . ($hint !== '' ? '<p class="muted">' . h($hint) . '</p>' : '')
+        . '</div>';
+}
+
+/**
+ * Escape một chuỗi rồi biến các tham chiếu "#123" thành liên kết tới công việc.
+ * Dùng cho danh sách vấn đề của kiểm tra phát hành.
+ */
+function linkIssueRefs(string $text, int $projectId): string
+{
+    return (string)preg_replace_callback(
+        '/#(\d+)/',
+        static fn(array $m): string => '<a href="/issues.php?project_id=' . $projectId . '&amp;id=' . $m[1] . '">#' . $m[1] . '</a>',
+        h($text)
+    );
+}
+
+/** Thẻ <select> có nhãn cho một enum, giá trị hiển thị qua hàm *Label(). */
+function enumOptions(array $values, callable $label, ?string $selected, bool $withAll = false, string $allText = 'Tất cả'): string
+{
+    $html = $withAll ? '<option value="">' . h($allText) . '</option>' : '';
+    foreach ($values as $value) {
+        $html .= '<option value="' . h($value) . '"' . ($selected === $value ? ' selected' : '') . '>'
+            . h($label($value)) . '</option>';
+    }
+    return $html;
+}
+
+/** Form ẩn chung: CSRF + action + project_id. */
+function hiddenFields(string $action, int $projectId, array $extra = []): string
+{
+    $html = '<input type="hidden" name="csrf" value="' . h(csrfToken()) . '">'
+        . '<input type="hidden" name="action" value="' . h($action) . '">'
+        . '<input type="hidden" name="project_id" value="' . $projectId . '">';
+    foreach ($extra as $name => $value) {
+        $html .= '<input type="hidden" name="' . h((string)$name) . '" value="' . h((string)$value) . '">';
+    }
+    return $html;
+}
+
 /** Brand logo (git-branch mark), stroke = currentColor. */
 function brandLogoSvg(): string
 {
@@ -348,7 +451,7 @@ function pageStart(string $title): void
         . '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
         . '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap">'
         . '<link rel="stylesheet" href="/assets/css/tokens.css?v=4">'
-        . '<link rel="stylesheet" href="/assets/css/app.css?v=4">'
+        . '<link rel="stylesheet" href="/assets/css/app.css?v=5">'
         . '<script src="/assets/js/theme.js?v=4" defer></script>'
         . '</head><body' . ($isAuthPage ? ' class="auth-page"' : '') . '>'
         . '<a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>'
@@ -400,7 +503,26 @@ function pageStart(string $title): void
             echo '<a class="login-link" href="/login.php">Đăng nhập</a>';
         }
     }
-    echo '</div></div></header><main id="main-content" tabindex="-1">';
+    echo '</div></div></header>';
+    $nav = $GLOBALS['rt_nav'] ?? null;
+    if (!$isAuthPage && $user !== null && is_array($nav) && $nav['projects'] !== []) {
+        // Thanh ngữ cảnh: luôn cho biết đang ở dự án nào và đổi nhanh được.
+        $target = $activeScript === 'index.php' ? '/' : '/' . $activeScript;
+        echo '<div class="project-bar"><form method="get" action="' . h($target) . '" class="project-switcher">'
+            . '<label for="nav-project">Dự án đang chọn</label>'
+            . '<select id="nav-project" name="project_id" onchange="this.form.submit()">';
+        foreach ($nav['projects'] as $project) {
+            echo '<option value="' . (int)$project['id'] . '"'
+                . ((int)$project['id'] === (int)$nav['project_id'] ? ' selected' : '') . '>'
+                . h($project['name']) . '</option>';
+        }
+        echo '</select><noscript><button type="submit" class="secondary">Chọn</button></noscript></form>';
+        if ($nav['role'] !== null) {
+            echo '<span class="muted">Vai trò của bạn:</span> ' . roleBadge((string)$nav['role']);
+        }
+        echo '</div>';
+    }
+    echo '<main id="main-content" tabindex="-1">';
     if (!$isAuthPage) {
         $subtitle = $subtitles[$script] ?? '';
         echo '<div class="page-head"><h1>' . h($title) . '</h1>'

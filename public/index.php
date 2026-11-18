@@ -2,53 +2,74 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../src/App.php';
+require __DIR__ . '/../src/ReleaseService.php';
 
 $user = requireLogin();
 $connection = db();
-$projects = queryAll(
-    $connection,
-    'SELECT p.id,p.name,p.description,pm.role
-     FROM projects p
-     JOIN project_members pm ON pm.project_id=p.id
-     WHERE pm.user_id=$1
-     ORDER BY p.id',
-    [(string)$user['id']]
-);
+[$projects] = selectProject($connection, $user);
+
 $summaries = [];
 foreach ($projects as $project) {
     $projectId = (int)$project['id'];
-    $issueStats = queryOne(
+    // Số công việc CHƯA hoàn tất theo từng mức ưu tiên.
+    $openRows = queryAll(
+        $connection,
+        "SELECT priority,count(*) AS total
+         FROM issues
+         WHERE project_id=\$1 AND status NOT IN ('verified','closed')
+         GROUP BY priority",
+        [(string)$projectId]
+    );
+    $openByPriority = array_fill_keys(ISSUE_PRIORITIES, 0);
+    foreach ($openRows as $row) {
+        $openByPriority[(string)$row['priority']] = (int)$row['total'];
+    }
+    $totals = queryOne(
         $connection,
         "SELECT count(*) AS total,
-                count(*) FILTER (WHERE status IN ('open','in_progress','resolved','retest')) AS active,
-                count(*) FILTER (WHERE status IN ('open','retest')) AS attention,
-                count(*) FILTER (WHERE priority IN ('blocker','critical')) AS critical
+                count(*) FILTER (WHERE status IN ('verified','closed')) AS done
          FROM issues WHERE project_id=\$1",
         [(string)$projectId]
     );
-    $releaseStats = queryOne(
+    $blockedIssues = [];
+    foreach (DependencyService::blockedForProject($connection, $projectId) as $row) {
+        $blockedIssues[(int)$row['id']] = true;
+    }
+    // Phiên bản sắp tới (chưa chốt) kèm kết quả kiểm tra điều kiện hiện tại.
+    $upcoming = [];
+    $releases = queryAll(
         $connection,
-        "SELECT count(*) FILTER (WHERE status='planned') AS planned,
-                count(*) FILTER (WHERE status='ready') AS ready,
-                count(*) FILTER (WHERE status='released') AS released
-         FROM releases WHERE project_id=\$1",
+        "SELECT id,version_name,status FROM releases
+         WHERE project_id=\$1 AND status IN ('planned','ready')
+         ORDER BY CASE status WHEN 'ready' THEN 0 ELSE 1 END, id
+         LIMIT 3",
         [(string)$projectId]
     );
-    $blockedCount = queryOne(
+    foreach ($releases as $release) {
+        $check = ReleaseService::check($connection, (int)$release['id'], $projectId);
+        $passed = count(array_filter($check['checks'], static fn(array $c): bool => $c['passed']));
+        $upcoming[] = $release + [
+            'passed' => $passed,
+            'total' => count($check['checks']),
+            'problems' => count($check['problems']),
+            'items' => count($check['items']),
+        ];
+    }
+    $lastReleased = queryOne(
         $connection,
-        "SELECT count(*) AS total
-         FROM dependencies d
-         JOIN issues i ON i.id=d.issue_id
-         JOIN issues dep ON dep.id=d.depends_on_id
-         WHERE i.project_id=\$1 AND dep.status NOT IN ('verified','closed')",
+        "SELECT id,version_name,released_at FROM releases
+         WHERE project_id=\$1 AND status='released'
+         ORDER BY released_at DESC NULLS LAST, id DESC LIMIT 1",
         [(string)$projectId]
     );
     $summaries[] = [
         'project' => $project,
-        'issues' => $issueStats,
-        'releases' => $releaseStats,
-        'blocked' => (int)$blockedCount['total'],
+        'open' => $openByPriority,
+        'total' => (int)$totals['total'],
+        'done' => (int)$totals['done'],
+        'blocked' => count($blockedIssues),
+        'upcoming' => $upcoming,
+        'last_released' => $lastReleased,
     ];
 }
 $assigned = queryAll(
@@ -62,16 +83,6 @@ $assigned = queryAll(
      LIMIT 8",
     [(string)$user['id']]
 );
-$recentReleases = queryAll(
-    $connection,
-    'SELECT r.id,r.version_name,r.status,r.released_at,p.name AS project_name
-     FROM releases r
-     JOIN projects p ON p.id=r.project_id
-     JOIN project_members pm ON pm.project_id=r.project_id AND pm.user_id=$1
-     ORDER BY r.id DESC
-     LIMIT 6',
-    [(string)$user['id']]
-);
 
 pageStart('Tổng quan');
 ?>
@@ -80,107 +91,101 @@ pageStart('Tổng quan');
 </section>
 
 <?php if ($summaries === []): ?>
-    <section class="panel">
-        <p>Bạn chưa thuộc dự án nào. Hãy liên hệ admin để được thêm vào dự án.</p>
-    </section>
+    <section class="panel"><?= emptyState('Bạn chưa thuộc dự án nào.', 'Hãy liên hệ quản trị viên để được thêm vào dự án.') ?></section>
 <?php else: ?>
     <section class="grid project-grid">
         <?php foreach ($summaries as $summary): ?>
             <?php
             $project = $summary['project'];
-            // Presentation only: derived counts and bar widths for the card.
-            $total = (int)$summary['issues']['total'];
-            $active = (int)$summary['issues']['active'];
-            $done = max(0, $total - $active);
-            $donePercent = $total > 0 ? (int)round($done * 100 / $total) : 0;
-            $planned = (int)$summary['releases']['planned'];
-            $ready = (int)$summary['releases']['ready'];
-            $released = (int)$summary['releases']['released'];
-            $releaseTotal = $planned + $ready + $released;
-            $releaseWidth = static fn(int $count): int => $releaseTotal > 0 ? (int)round($count * 100 / $releaseTotal) : 0;
+            $projectId = (int)$project['id'];
+            $openTotal = array_sum($summary['open']);
+            $donePercent = $summary['total'] > 0 ? (int)round($summary['done'] * 100 / $summary['total']) : 0;
             ?>
             <article class="panel project-card">
                 <div class="project-card-head">
                     <h2><?= h($project['name']) ?></h2>
-                    <span class="pill tone-violet">vai trò: <?= h($project['role']) ?></span>
+                    <?= roleBadge($project['role']) ?>
                 </div>
-                <p class="muted"><?= h($project['description']) ?></p>
-                <div class="summary-grid" aria-label="Thống kê công việc">
-                    <div class="summary-card tone-indigo"><strong><?= $total ?></strong><span>Công việc</span></div>
-                    <div class="summary-card tone-sky"><strong><?= $active ?></strong><span>Đang mở</span></div>
-                    <div class="summary-card tone-emerald"><strong><?= $done ?></strong><span>Hoàn tất</span></div>
-                    <div class="summary-card tone-amber"><strong><?= (int)$summary['issues']['critical'] ?></strong><span>Nghiêm trọng</span></div>
-                    <div class="summary-card tone-rose"><strong><?= (int)$summary['blocked'] ?></strong><span>Bị chặn</span></div>
-                </div>
-                <div class="stat-row">
+                <?php if ((string)$project['description'] !== ''): ?>
+                    <p class="muted"><?= h($project['description']) ?></p>
+                <?php endif; ?>
+
+                <h3>Công việc đang mở theo ưu tiên (<?= $openTotal ?>)</h3>
+                <ul class="stat-list">
+                    <?php foreach ($summary['open'] as $priority => $count): ?>
+                        <li>
+                            <a href="/issues.php?project_id=<?= $projectId ?>&amp;priority=<?= h($priority) ?>">
+                                <strong><?= $count ?></strong><?= priorityBadge($priority) ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                    <li>
+                        <a href="/dependencies.php?project_id=<?= $projectId ?>&amp;blocked=1">
+                            <strong><?= (int)$summary['blocked'] ?></strong><span class="pill status-blocked">Đang bị chặn</span>
+                        </a>
+                    </li>
+                </ul>
                 <div class="stat-block">
-                    <div class="stat-label"><span>Tiến độ hoàn tất</span><span><?= $donePercent ?>%</span></div>
-                    <div class="stat-bar" role="img" aria-label="<?= h('Hoàn tất ' . $done . '/' . $total . ' công việc') ?>">
+                    <div class="stat-label"><span>Tiến độ hoàn tất</span><span><?= $summary['done'] ?>/<?= $summary['total'] ?> · <?= $donePercent ?>%</span></div>
+                    <div class="stat-bar" role="img" aria-label="<?= h('Hoàn tất ' . $summary['done'] . '/' . $summary['total'] . ' công việc') ?>">
                         <span class="tone-emerald" style="width: <?= $donePercent ?>%"></span>
                     </div>
                 </div>
-                <div class="stat-block">
-                    <div class="stat-label"><span>Phiên bản</span><span class="muted"><?= $releaseTotal ?> phiên bản</span></div>
-                    <div class="stat-bar" role="img" aria-label="<?= h($planned . ' dự kiến, ' . $ready . ' sẵn sàng, ' . $released . ' đã phát hành') ?>">
-                        <span class="tone-sky" style="width: <?= $releaseWidth($planned) ?>%"></span>
-                        <span class="tone-amber" style="width: <?= $releaseWidth($ready) ?>%"></span>
-                        <span class="tone-emerald" style="width: <?= $releaseWidth($released) ?>%"></span>
-                    </div>
-                    <div class="stat-legend">
-                        <span class="pill release-planned"><?= $planned ?> dự kiến</span>
-                        <span class="pill release-ready"><?= $ready ?> sẵn sàng</span>
-                        <span class="pill release-released"><?= $released ?> đã phát hành</span>
-                    </div>
-                </div>
-                </div>
+
+                <h3>Phiên bản sắp tới</h3>
+                <?php if ($summary['upcoming'] === []): ?>
+                    <p class="muted">Chưa có phiên bản dự kiến.</p>
+                <?php else: ?>
+                    <ul class="item-list">
+                        <?php foreach ($summary['upcoming'] as $release): ?>
+                            <li>
+                                <a href="/releases.php?project_id=<?= $projectId ?>&amp;id=<?= (int)$release['id'] ?>"><b><?= h($release['version_name']) ?></b></a>
+                                <?= releaseStatusBadge($release['status']) ?>
+                                <?php if ($release['problems'] === 0): ?>
+                                    <span class="pill test-passed">✓ Đủ điều kiện (<?= $release['passed'] ?>/<?= $release['total'] ?>)</span>
+                                <?php else: ?>
+                                    <span class="pill test-failed">✗ <?= $release['passed'] ?>/<?= $release['total'] ?> điều kiện · <?= $release['problems'] ?> vấn đề</span>
+                                <?php endif; ?>
+                                <span class="muted"><?= $release['items'] ?> công việc</span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+                <?php if ($summary['last_released'] !== null): ?>
+                    <p class="muted">Phát hành gần nhất:
+                        <a href="/release-notes.php?id=<?= (int)$summary['last_released']['id'] ?>"><?= h($summary['last_released']['version_name']) ?></a>
+                        <?php if ($summary['last_released']['released_at'] !== null): ?>
+                            (<?= h(date('d/m/Y', strtotime((string)$summary['last_released']['released_at']))) ?>)
+                        <?php endif; ?>
+                    </p>
+                <?php endif; ?>
                 <div class="card-actions">
-                    <a class="btn secondary" href="/issues.php?project_id=<?= (int)$project['id'] ?>">Công việc</a>
-                    <a class="btn secondary" href="/releases.php?project_id=<?= (int)$project['id'] ?>">Phiên bản</a>
-                    <a class="btn secondary" href="/dependencies.php?project_id=<?= (int)$project['id'] ?>">Phụ thuộc</a>
+                    <a class="btn secondary" href="/issues.php?project_id=<?= $projectId ?>">Công việc</a>
+                    <a class="btn secondary" href="/releases.php?project_id=<?= $projectId ?>">Phiên bản</a>
+                    <a class="btn secondary" href="/dependencies.php?project_id=<?= $projectId ?>">Phụ thuộc</a>
                 </div>
             </article>
         <?php endforeach; ?>
     </section>
 
-    <div class="grid">
-        <section class="panel">
-            <h2>Việc được giao cho tôi</h2>
-            <?php if ($assigned === []): ?>
-                <p class="muted">Không có công việc đang mở được giao cho bạn.</p>
-            <?php else: ?>
-                <ul class="item-list">
-                    <?php foreach ($assigned as $issue): ?>
-                        <li>
-                            <a href="/issues.php?project_id=<?= (int)$issue['project_id'] ?>&id=<?= (int)$issue['id'] ?>">
-                                #<?= (int)$issue['id'] ?> <?= h($issue['title']) ?>
-                            </a>
-                            <span class="pill priority-<?= h($issue['priority']) ?>"><?= h($issue['priority']) ?></span>
-                            <span class="pill status-<?= h($issue['status']) ?>"><?= h($issue['status']) ?></span>
-                            <span class="muted"><?= h($issue['project_name']) ?></span>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-        </section>
-
-        <section class="panel">
-            <h2>Phiên bản gần đây</h2>
-            <?php if ($recentReleases === []): ?>
-                <p class="muted">Chưa có phiên bản.</p>
-            <?php else: ?>
-                <ul class="item-list">
-                    <?php foreach ($recentReleases as $release): ?>
-                        <li>
-                            <a href="/release-notes.php?id=<?= (int)$release['id'] ?>">
-                                <?= h($release['version_name']) ?>
-                            </a>
-                            <span class="pill release-<?= h($release['status']) ?>"><?= h($release['status']) ?></span>
-                            <span class="muted"><?= h($release['project_name']) ?></span>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-        </section>
-    </div>
+    <section class="panel">
+        <h2>Việc được giao cho tôi</h2>
+        <?php if ($assigned === []): ?>
+            <p class="muted">Không có công việc đang mở được giao cho bạn.</p>
+        <?php else: ?>
+            <ul class="item-list">
+                <?php foreach ($assigned as $issue): ?>
+                    <li>
+                        <a href="/issues.php?project_id=<?= (int)$issue['project_id'] ?>&amp;id=<?= (int)$issue['id'] ?>">
+                            #<?= (int)$issue['id'] ?> <?= h($issue['title']) ?>
+                        </a>
+                        <?= priorityBadge($issue['priority']) ?>
+                        <?= statusBadge($issue['status']) ?>
+                        <span class="muted"><?= h($issue['project_name']) ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </section>
 <?php endif; ?>
 <?php pageEnd(); ?>

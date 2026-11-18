@@ -60,21 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$projects = queryAll(
-    $connection,
-    'SELECT p.id,p.name,p.description,pm.role,
-            (SELECT count(*) FROM project_members x WHERE x.project_id=p.id) AS member_count,
-            (SELECT count(*) FROM issues i WHERE i.project_id=p.id) AS issue_count
-     FROM projects p
-     JOIN project_members pm ON pm.project_id=p.id
-     WHERE pm.user_id=$1
-     ORDER BY p.id',
-    [(string)$user['id']]
-);
-$projectId = (int)($_REQUEST['project_id'] ?? 0);
-if ($projectId === 0 && $projects !== []) {
-    $projectId = (int)$projects[0]['id'];
-}
+[$projects, $projectId] = selectProject($connection, $user);
 $selectedProject = null;
 $members = [];
 $canAdmin = false;
@@ -101,7 +87,7 @@ if ($projectId > 0) {
 
 pageStart('Dự án');
 if ($error !== '') {
-    echo '<p class="error">' . nl2br(h($error)) . '</p>';
+    echo '<p class="error" role="alert">' . nl2br(h($error)) . '</p>';
 }
 ?>
 <section class="panel">
@@ -109,23 +95,21 @@ if ($error !== '') {
     <?php if ($projects === []): ?>
         <p class="muted">Bạn chưa thuộc dự án nào.</p>
     <?php else: ?>
-        <form method="get">
-            <label class="field">Chọn dự án
-                <select name="project_id" onchange="this.form.submit()">
-                    <?php foreach ($projects as $project): ?>
-                        <option value="<?= (int)$project['id'] ?>" <?= $projectId === (int)$project['id'] ? 'selected' : '' ?>>
-                            <?= h($project['name']) ?> (<?= h($project['role']) ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        </form>
+        <ul class="item-list">
+            <?php foreach ($projects as $project): ?>
+                <li>
+                    <a href="/projects.php?project_id=<?= (int)$project['id'] ?>"<?= $projectId === (int)$project['id'] ? ' aria-current="true"' : '' ?>><b><?= h($project['name']) ?></b></a>
+                    <?= roleBadge($project['role']) ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
     <?php endif; ?>
 </section>
 
 <?php if ($isAnyAdmin): ?>
     <section class="panel">
-        <h2>Tạo dự án</h2>
+        <h2>Tạo dự án mới</h2>
+        <p class="muted">Bạn sẽ tự động trở thành quản trị của dự án vừa tạo.</p>
         <form method="post">
             <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
             <input type="hidden" name="action" value="create">
@@ -164,7 +148,7 @@ if ($error !== '') {
                     <tr>
                         <td><?= h($member['full_name']) ?></td>
                         <td><?= h($member['username']) ?></td>
-                        <td><span class="pill"><?= h($member['role']) ?></span></td>
+                        <td><?= roleBadge($member['role']) ?></td>
                         <td>
                             <?php if ($canAdmin): ?>
                                 <form method="post" class="inline-form">
@@ -172,10 +156,9 @@ if ($error !== '') {
                                     <input type="hidden" name="action" value="update_member">
                                     <input type="hidden" name="project_id" value="<?= $projectId ?>">
                                     <input type="hidden" name="username" value="<?= h($member['username']) ?>">
-                                    <select name="member_role">
-                                        <?php foreach ($roleOptions as $option): ?>
-                                            <option value="<?= h($option) ?>" <?= $member['role'] === $option ? 'selected' : '' ?>><?= h($option) ?></option>
-                                        <?php endforeach; ?>
+                                    <label class="sr-only" for="role-<?= (int)$member['id'] ?>">Vai trò của <?= h($member['full_name']) ?></label>
+                                    <select name="member_role" id="role-<?= (int)$member['id'] ?>">
+                                        <?= enumOptions($roleOptions, 'roleLabel', (string)$member['role']) ?>
                                     </select>
                                     <button class="secondary" type="submit">Đổi vai trò</button>
                                 </form>
@@ -184,7 +167,7 @@ if ($error !== '') {
                                     <input type="hidden" name="action" value="remove_member">
                                     <input type="hidden" name="project_id" value="<?= $projectId ?>">
                                     <input type="hidden" name="user_id" value="<?= (int)$member['id'] ?>">
-                                    <button class="danger" type="submit">Gỡ</button>
+                                    <button class="danger" type="submit" aria-label="Gỡ <?= h($member['full_name']) ?> khỏi dự án">Gỡ</button>
                                 </form>
                             <?php endif; ?>
                         </td>
@@ -201,11 +184,7 @@ if ($error !== '') {
                 <input type="hidden" name="project_id" value="<?= $projectId ?>">
                 <label class="field">Tên đăng nhập<input name="username" required maxlength="60" placeholder="dev_c"></label>
                 <label class="field">Vai trò
-                    <select name="member_role">
-                        <?php foreach ($roleOptions as $option): ?>
-                            <option value="<?= h($option) ?>"><?= h($option) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <select name="member_role"><?= enumOptions($roleOptions, 'roleLabel', 'developer') ?></select>
                 </label>
                 <button>Lưu thành viên</button>
             </form>

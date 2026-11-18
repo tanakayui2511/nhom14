@@ -799,3 +799,109 @@ details > summary { font-weight: 600; cursor: pointer; }
     .accent-dot { width: 16px; height: 16px; }
     .avatar { display: none; }
 }
+
+/* ===================== v1.1: badge theo mức, thanh dự án, checklist, xung đột ===================== */
+
+/* Màu ưu tiên: blocker đỏ, critical cam, high vàng, medium xám, low xanh lá. */
+.pill.priority-blocker { --tone: var(--rose); --tone-soft: var(--rose-soft); --tone-strong: var(--rose-strong); --tone-border: var(--rose-border); }
+.pill.priority-critical { --tone: var(--orange); --tone-soft: var(--orange-soft); --tone-strong: var(--orange-strong); --tone-border: var(--orange-border); }
+.pill.priority-high { --tone: var(--amber); --tone-soft: var(--amber-soft); --tone-strong: var(--amber-strong); --tone-border: var(--amber-border); }
+.pill.priority-medium { --tone: var(--slate); --tone-soft: var(--slate-soft); --tone-strong: var(--slate-strong); --tone-border: var(--slate-border); }
+.pill.priority-low { --tone: var(--emerald); --tone-soft: var(--emerald-soft); --tone-strong: var(--emerald-strong); --tone-border: var(--emerald-border); }
+/* Trạng thái hoàn tất (verified/closed) và kết quả đạt: xanh lá. */
+.pill:is(.status-verified, .status-closed, .test-passed) { --tone: var(--emerald); --tone-soft: var(--emerald-soft); --tone-strong: var(--emerald-strong); --tone-border: var(--emerald-border); }
+.pill.test-failed { --tone: var(--rose); --tone-soft: var(--rose-soft); --tone-strong: var(--rose-strong); --tone-border: var(--rose-border); }
+.pill:is(.test-blocked, .test-unverified) { --tone: var(--amber); --tone-soft: var(--amber-soft); --tone-strong: var(--amber-strong); --tone-border: var(--amber-border); }
+.pill.test-not_tested { --tone: var(--slate); --tone-soft: var(--slate-soft); --tone-strong: var(--slate-strong); --tone-border: var(--slate-border); }
+.pill:is(.type-bug, .type-task, .type-feature, [class*="role-"]) { --tone: var(--violet); --tone-soft: var(--violet-soft); --tone-strong: var(--violet-strong); --tone-border: var(--violet-border); }
+.pill.type-feature { --tone: var(--sky); --tone-soft: var(--sky-soft); --tone-strong: var(--sky-strong); --tone-border: var(--sky-border); }
+.pill.type-task { --tone: var(--indigo); --tone-soft: var(--indigo-soft); --tone-strong: var(--indigo-strong); --tone-border: var(--indigo-border); }
+
+.sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Thanh "dự án đang chọn" ngay dưới header. */
+.project-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    max-width: 1200px; margin: 12px auto 0; padding: 8px 24px;
+}
+.project-switcher { display: flex; align-items: center; gap: 8px; margin: 0; }
+.project-switcher label { font-size: var(--label); font-weight: 600; }
+.project-switcher select {
+    min-height: 36px; padding: 4px 10px; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-sm, 8px); font: inherit;
+}
+.project-switcher select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Bộ lọc danh sách. */
+.filter-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0 12px; align-items: end; }
+.filter-bar .field { margin: 6px 0; }
+.filter-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.toggle-mine[aria-pressed="true"] { color: var(--on-primary); background: var(--grad-primary, var(--primary)); }
+
+/* Bảng luôn cuộn ngang trên màn hình hẹp thay vì bóp nội dung. */
+.table-wrap { -webkit-overflow-scrolling: touch; }
+.table-wrap table { min-width: 640px; }
+
+/* Checklist điều kiện phát hành. */
+.checklist { margin: 8px 0 16px; padding: 0; list-style: none; }
+.checklist > li {
+    display: grid; grid-template-columns: 28px 1fr; gap: 4px 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--divider);
+}
+.checklist .mark { font-size: 1.15rem; font-weight: 700; line-height: 1.4; text-align: center; }
+.checklist .pass .mark { color: var(--emerald-strong); }
+.checklist .fail .mark { color: var(--rose-strong); }
+.checklist .problems { grid-column: 2; margin: 4px 0 0; padding-left: 18px; }
+.checklist .problems li { margin: 2px 0; }
+.conditions-list li { margin: 6px 0; }
+
+/* So sánh hai bản khi xung đột. */
+.conflict-panel { border: 2px solid var(--rose-border); }
+.compare-table td { vertical-align: top; white-space: pre-wrap; }
+.compare-table tr.is-diff td { background: var(--amber-soft); }
+.compare-table tr.is-diff td:first-child { font-weight: 700; }
+
+/* Chuỗi vòng phụ thuộc: tô đậm từng mắt xích. */
+.cycle-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.cycle-chain li { display: inline-flex; align-items: center; gap: 6px; }
+.cycle-chain mark {
+    padding: 2px 8px; color: var(--rose-strong); background: var(--rose-soft);
+    border: 1px solid var(--rose-border); border-radius: 999px; font-weight: 700;
+}
+.cycle-chain li + li::before { color: var(--rose-strong); font-weight: 700; content: "→"; }
+
+/* Nhóm "đang chặn tiến độ". */
+.blocked-groups { margin: 0; padding: 0; list-style: none; }
+.blocked-groups > li { padding: 10px 0; border-bottom: 1px solid var(--divider); }
+.blocked-groups ul { margin: 4px 0 0; padding-left: 20px; }
+
+/* Lịch sử thay đổi. */
+.history-list { margin: 0; padding-left: 20px; }
+.history-list > li { margin: 8px 0; }
+.history-list del { color: var(--rose-strong); }
+.history-list ins { color: var(--emerald-strong); text-decoration: none; }
+
+/* Hộp xác nhận <dialog>. */
+dialog.confirm-dialog {
+    max-width: min(520px, calc(100vw - 32px)); padding: 22px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md, 12px);
+    box-shadow: var(--shadow-lg);
+}
+dialog.confirm-dialog::backdrop { background: rgba(10, 14, 28, 0.55); }
+dialog.confirm-dialog h2 { margin-top: 0; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+.issue-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.template-hint { margin: 4px 0 0; white-space: pre-line; }
+.stat-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 8px 0; padding: 0; list-style: none; }
+.stat-list li { padding: 8px 10px; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 10px; }
+.stat-list strong { display: block; font-size: 1.3rem; }
+
+@media (max-width: 720px) {
+    .project-bar { padding: 8px 16px; }
+    .filter-bar { grid-template-columns: 1fr 1fr; }
+    .checklist > li { grid-template-columns: 22px 1fr; }
+}

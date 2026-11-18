@@ -6,23 +6,8 @@ require __DIR__ . '/../src/App.php';
 
 $user = requireLogin();
 $connection = db();
-$projects = queryAll(
-    $connection,
-    'SELECT p.id,p.name,pm.role
-     FROM projects p
-     JOIN project_members pm ON pm.project_id=p.id
-     WHERE pm.user_id=$1
-     ORDER BY p.id',
-    [(string)$user['id']]
-);
-$projectId = (int)($_GET['project_id'] ?? 0);
-if ($projectId === 0 && $projects !== []) {
-    $projectId = (int)$projects[0]['id'];
-}
-$role = null;
+[$projects, $projectId, $role] = selectProject($connection, $user);
 if ($projectId > 0) {
-    requireProjectAccess($connection, $projectId, $user);
-    $role = projectRole($connection, $projectId, $user);
     if (!canViewAudit($role)) {
         http_response_code(403);
         exit('Chỉ release manager hoặc admin được xem lịch sử kiểm toán.');
@@ -60,15 +45,7 @@ pageStart('Lịch sử kiểm toán');
 <?php else: ?>
     <section class="panel">
         <form method="get">
-            <label class="field">Dự án
-                <select name="project_id" onchange="this.form.submit()">
-                    <?php foreach ($projects as $project): ?>
-                        <option value="<?= (int)$project['id'] ?>" <?= $projectId === (int)$project['id'] ? 'selected' : '' ?>>
-                            <?= h($project['name']) ?> (<?= h($project['role']) ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
+            <input type="hidden" name="project_id" value="<?= $projectId ?>">
             <label class="field">Hành động<input name="action" value="<?= h($actionFilter) ?>" placeholder="release_created"></label>
             <label class="field">Loại đối tượng
                 <select name="entity_type">
@@ -94,7 +71,7 @@ pageStart('Lịch sử kiểm toán');
                     <?php foreach ($rows as $row): ?>
                         <tr>
                             <td><?= h(date('d/m/Y H:i:s', strtotime((string)$row['created_at']))) ?></td>
-                            <td><?= h($row['full_name'] ?? $row['username'] ?? 'Hệ thống') ?></td>
+                            <td><?= h($row['user_name'] ?? $row['username'] ?? 'Hệ thống') ?></td>
                             <td><code><?= h($row['action']) ?></code></td>
                             <td><?= h($row['entity_type']) ?> #<?= h($row['entity_id']) ?></td>
                             <td>

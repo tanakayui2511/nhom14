@@ -6,52 +6,39 @@ require __DIR__ . '/../src/DependencyService.php';
 
 $user = requireLogin();
 $connection = db();
-$projects = queryAll(
-    $connection,
-    'SELECT p.id,p.name,pm.role
-     FROM projects p
-     JOIN project_members pm ON pm.project_id=p.id
-     WHERE pm.user_id=$1
-     ORDER BY p.id',
-    [(string)$user['id']]
-);
-$projectId = (int)($_REQUEST['project_id'] ?? 0);
-if ($projectId === 0 && $projects !== []) {
-    $projectId = (int)$projects[0]['id'];
-}
-$role = null;
-if ($projectId > 0) {
-    requireProjectAccess($connection, $projectId, $user);
-    $role = projectRole($connection, $projectId, $user);
-}
+[$projects, $projectId, $role] = selectProject($connection, $user);
 $error = '';
+$cycleError = null;
+$old = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf();
-    $projectId = (int)($_POST['project_id'] ?? 0);
-    if ($projectId <= 0) {
-        $error = 'Dự án không hợp lệ.';
-    } else {
-        requireProjectAccess($connection, $projectId, $user);
-        $role = projectRole($connection, $projectId, $user);
-        try {
-            if (!hasProjectRole($role, ['developer', 'release_manager'])) {
-                throw new ForbiddenException('Bạn không có quyền thay đổi quan hệ phụ thuộc.');
-            }
-            $action = (string)($_POST['action'] ?? 'add');
-            $issueId = postInt($_POST, 'issue_id', 1, PHP_INT_MAX, 'Công việc');
-            $dependsOnId = postInt($_POST, 'depends_on_id', 1, PHP_INT_MAX, 'Công việc tiên quyết');
-            if ($action === 'remove') {
-                DependencyService::remove($connection, $projectId, $issueId, $dependsOnId, (int)$user['id']);
-                flash('ok', 'Đã gỡ quan hệ phụ thuộc.');
-            } else {
-                DependencyService::add($connection, $projectId, $issueId, $dependsOnId, (int)$user['id']);
-                flash('ok', 'Đã thêm quan hệ phụ thuộc.');
-            }
-            redirect('/dependencies.php?project_id=' . $projectId);
-        } catch (Throwable $exception) {
-            $error = userMessage($exception);
+    try {
+        if ((int)($_POST['project_id'] ?? 0) <= 0) {
+            throw new ValidationException('Dự án không hợp lệ.');
         }
+        if (!hasProjectRole($role, ['developer', 'release_manager'])) {
+            throw new ForbiddenException('Bạn không có quyền thay đổi quan hệ phụ thuộc.');
+        }
+        $action = (string)($_POST['action'] ?? 'add');
+        $issueId = postInt($_POST, 'issue_id', 1, PHP_INT_MAX, 'Công việc');
+        $dependsOnId = postInt($_POST, 'depends_on_id', 1, PHP_INT_MAX, 'Công việc tiên quyết');
+        if ($action === 'remove') {
+            DependencyService::remove($connection, $projectId, $issueId, $dependsOnId, (int)$user['id']);
+            flash('ok', 'Đã gỡ quan hệ: #' . $issueId . ' không còn phụ thuộc #' . $dependsOnId . '.');
+        } else {
+            DependencyService::add($connection, $projectId, $issueId, $dependsOnId, (int)$user['id']);
+            flash('ok', 'Đã thêm quan hệ: #' . $issueId . ' phụ thuộc #' . $dependsOnId . '.');
+        }
+        redirect('/dependencies.php?project_id=' . $projectId);
+    } catch (CycleException $exception) {
+        $error = 'Từ chối: thêm quan hệ này sẽ tạo vòng phụ thuộc '
+            . DependencyService::formatChain($exception->cycle) . '.';
+        $cycleError = $exception;
+        $old = $_POST;
+    } catch (Throwable $exception) {
+        $error = userMessage($exception);
+        $old = $_POST;
     }
 }
 
@@ -142,28 +129,27 @@ $priorityOptions = ISSUE_PRIORITIES;
 
 pageStart('Quan hệ phụ thuộc');
 if ($error !== '') {
-    echo '<p class="error">' . nl2br(h($error)) . '</p>';
+    echo '<p class="error" role="alert">' . nl2br(h($error)) . '</p>';
+}
+if ($cycleError !== null) {
+    // Tô đậm từng mắt xích của chuỗi gây vòng.
+    echo '<section class="panel conflict-panel" aria-label="Chuỗi gây vòng"><b>Chuỗi gây vòng:</b><ol class="cycle-chain">';
+    foreach ($cycleError->cycle as $id) {
+        $title = $cycleError->titles[$id] ?? '';
+        echo '<li><mark>#' . (int)$id . ($title !== '' ? ' ' . h($title) : '') . '</mark></li>';
+    }
+    echo '</ol><p class="muted">Mắt xích cuối là quan hệ bạn vừa định thêm, quay về công việc đầu chuỗi. '
+        . 'Hãy gỡ một quan hệ trong chuỗi hoặc chọn quan hệ khác.</p></section>';
 }
 ?>
 <?php if ($projects === []): ?>
     <section class="panel"><p>Bạn chưa thuộc dự án nào.</p></section>
 <?php else: ?>
     <section class="panel">
-        <form method="get">
-            <label class="field">Dự án
-                <select name="project_id" onchange="this.form.submit()">
-                    <?php foreach ($projects as $project): ?>
-                        <option value="<?= (int)$project['id'] ?>" <?= $projectId === (int)$project['id'] ? 'selected' : '' ?>>
-                            <?= h($project['name']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        </form>
         <p class="muted">A phụ thuộc B nghĩa là B cần hoàn thành trước khi A có thể tiếp tục.</p>
         <?php if ($cycle !== null): ?>
             <p class="error">Phát hiện chu trình:
-                <?= h(implode(' -> ', array_map(static fn(int $id): string => '#' . $id, $cycle))) ?>
+                <?= h(DependencyService::formatChain($cycle)) ?>
             </p>
         <?php else: ?>
             <p class="ok">Đồ thị phụ thuộc hiện tại không có chu trình.</p>
@@ -173,15 +159,15 @@ if ($error !== '') {
     <section class="panel dependency-graph-panel" aria-labelledby="dependency-graph-title">
         <div class="section-heading">
             <div>
-                <h2 id="dependency-graph-title">Dependency Graph</h2>
+                <h2 id="dependency-graph-title">Đồ thị phụ thuộc</h2>
                 <p class="muted">Mũi tên đi từ công việc phụ thuộc đến công việc tiên quyết.</p>
             </div>
-            <a class="btn secondary" href="/projects.php?id=<?= $projectId ?>">Quay lại project</a>
+            <a class="btn secondary" href="/issues.php?project_id=<?= $projectId ?>">Danh sách công việc</a>
         </div>
 
         <div class="summary-grid" aria-label="Tóm tắt graph">
-            <div class="summary-card tone-indigo"><strong><?= count($visibleIssues) ?></strong><span>Issue trong graph</span></div>
-            <div class="summary-card tone-violet"><strong><?= count($visibleDependencies) ?></strong><span>Dependency</span></div>
+            <div class="summary-card tone-indigo"><strong><?= count($visibleIssues) ?></strong><span>Công việc trong đồ thị</span></div>
+            <div class="summary-card tone-violet"><strong><?= count($visibleDependencies) ?></strong><span>Quan hệ</span></div>
             <div class="summary-card tone-rose"><strong><?= $blockedCount ?></strong><span>Đang bị chặn</span></div>
             <div class="summary-card tone-emerald"><strong><?= $completeCount ?></strong><span>Đã hoàn thành</span></div>
             <div class="summary-card tone-sky"><strong><?= count($visibleIssues) - $completeCount ?></strong><span>Chưa hoàn thành</span></div>
@@ -189,28 +175,28 @@ if ($error !== '') {
 
         <form class="graph-filters" method="get" role="search">
             <input type="hidden" name="project_id" value="<?= $projectId ?>">
-            <label class="field">Tìm issue
+            <label class="field">Tìm công việc
                 <input name="q" value="<?= h($search) ?>" placeholder="#123 hoặc tiêu đề">
             </label>
             <label class="field">Trạng thái
                 <select name="status">
                     <option value="">Tất cả</option>
                     <?php foreach ($statusOptions as $status): ?>
-                        <option value="<?= h($status) ?>" <?= $statusFilter === $status ? 'selected' : '' ?>><?= h($status) ?></option>
+                        <option value="<?= h($status) ?>" <?= $statusFilter === $status ? 'selected' : '' ?>><?= h(statusLabel($status)) ?></option>
                     <?php endforeach; ?>
                 </select>
             </label>
-            <label class="field">Priority
+            <label class="field">Ưu tiên
                 <select name="priority">
                     <option value="">Tất cả</option>
                     <?php foreach ($priorityOptions as $priority): ?>
-                        <option value="<?= h($priority) ?>" <?= $priorityFilter === $priority ? 'selected' : '' ?>><?= h($priority) ?></option>
+                        <option value="<?= h($priority) ?>" <?= $priorityFilter === $priority ? 'selected' : '' ?>><?= h(priorityLabel($priority)) ?></option>
                     <?php endforeach; ?>
                 </select>
             </label>
             <label class="checkbox-field"><input type="checkbox" name="blocked" value="1" <?= $blockedFilter ? 'checked' : '' ?>> Chỉ đang bị chặn</label>
             <label class="checkbox-field"><input type="checkbox" name="complete" value="1" <?= $completeFilter ? 'checked' : '' ?>> Chỉ đã hoàn thành</label>
-            <button type="submit">Lọc graph</button>
+            <button type="submit">Lọc</button>
             <a class="btn secondary" href="/dependencies.php?project_id=<?= $projectId ?>">Xóa lọc</a>
         </form>
 
@@ -224,7 +210,7 @@ if ($error !== '') {
                     <circle class="ei-spark" cx="80" cy="12" r="3"/>
                     <circle class="ei-spark" cx="14" cy="18" r="2"/>
                 </svg>
-                <p class="empty-title">Không có issue phù hợp với bộ lọc hiện tại.</p>
+                <p class="empty-title">Không có công việc phù hợp với bộ lọc hiện tại.</p>
                 <p class="muted">Thử bỏ bớt điều kiện lọc hoặc bấm “Xóa lọc”.</p>
             </div>
         <?php else: ?>
@@ -259,22 +245,22 @@ if ($error !== '') {
                 </aside>
             </div>
             <div class="graph-legend" aria-label="Chú giải trạng thái">
-                <span><i class="status-dot status-open"></i> open</span>
-                <span><i class="status-dot status-in_progress"></i> in_progress</span>
-                <span><i class="status-dot status-resolved"></i> resolved</span>
-                <span><i class="status-dot status-retest"></i> retest</span>
-                <span><i class="status-dot status-verified"></i> verified</span>
-                <span><i class="status-dot status-closed"></i> closed</span>
-                <span><i class="status-dot status-blocked"></i> blocked</span>
+                <span><i class="status-dot status-open"></i> <?= h(statusLabel('open')) ?></span>
+                <span><i class="status-dot status-in_progress"></i> <?= h(statusLabel('in_progress')) ?></span>
+                <span><i class="status-dot status-resolved"></i> <?= h(statusLabel('resolved')) ?></span>
+                <span><i class="status-dot status-retest"></i> <?= h(statusLabel('retest')) ?></span>
+                <span><i class="status-dot status-verified"></i> <?= h(statusLabel('verified')) ?></span>
+                <span><i class="status-dot status-closed"></i> <?= h(statusLabel('closed')) ?></span>
+                <span><i class="status-dot status-blocked"></i> Đang bị chặn</span>
                 <span><i class="graph-legend-cycle"></i> cạnh thuộc chu trình</span>
             </div>
             <details class="graph-fallback">
-                <summary>Bảng dependency dự phòng</summary>
+                <summary>Bảng quan hệ (dạng văn bản)</summary>
                 <?php if ($visibleDependencies === []): ?>
-                    <p class="muted">Project chưa có dependency trong phạm vi lọc.</p>
+                    <p class="muted">Chưa có quan hệ phụ thuộc trong phạm vi lọc.</p>
                 <?php else: ?>
                     <div class="table-wrap"><table>
-                        <thead><tr><th>Issue</th><th>Quan hệ</th><th>Tiên quyết</th></tr></thead>
+                        <thead><tr><th>Công việc</th><th>Quan hệ</th><th>Phải xong trước</th></tr></thead>
                         <tbody>
                         <?php foreach ($visibleDependencies as $dependency): ?>
                             <tr>
@@ -297,35 +283,52 @@ if ($error !== '') {
                 <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
                 <input type="hidden" name="action" value="add">
                 <input type="hidden" name="project_id" value="<?= $projectId ?>">
-                <label class="field">Công việc phụ thuộc
-                    <select name="issue_id" required>
-                        <?php foreach ($issues as $issue): ?>
-                            <option value="<?= (int)$issue['id'] ?>">#<?= (int)$issue['id'] ?> · <?= h($issue['title']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <label class="field">Phải hoàn thành trước (B)
-                    <select name="depends_on_id" required>
-                        <?php foreach ($issues as $issue): ?>
-                            <option value="<?= (int)$issue['id'] ?>">#<?= (int)$issue['id'] ?> · <?= h($issue['title']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <button>Kiểm tra và thêm</button>
+                <div class="grid">
+                    <label class="field">Công việc A
+                        <select name="issue_id" required>
+                            <?php foreach ($issues as $issue): ?>
+                                <option value="<?= (int)$issue['id'] ?>" <?= (string)($old['issue_id'] ?? '') === (string)$issue['id'] ? 'selected' : '' ?>>#<?= (int)$issue['id'] ?> · <?= h($issue['title']) ?> (<?= h(statusLabel($issue['status'])) ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="field">phụ thuộc công việc B (B phải xong trước)
+                        <select name="depends_on_id" required>
+                            <?php foreach ($issues as $issue): ?>
+                                <option value="<?= (int)$issue['id'] ?>" <?= (string)($old['depends_on_id'] ?? '') === (string)$issue['id'] ? 'selected' : '' ?>>#<?= (int)$issue['id'] ?> · <?= h($issue['title']) ?> (<?= h(statusLabel($issue['status'])) ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </div>
+                <p class="muted">Trước khi lưu, hệ thống duyệt đồ thị (DFS) để kiểm tra vòng; quan hệ tạo vòng bị từ chối và chỉ rõ chuỗi gây vòng.</p>
+                <button type="submit">Kiểm tra và thêm</button>
             </form>
         </section>
     <?php endif; ?>
 
     <section class="panel">
         <h2>Đang chặn tiến độ</h2>
-        <?php if ($blocked === []): ?>
-            <p>Không có quan hệ nào đang chặn theo trạng thái hiện tại.</p>
+        <?php
+        $blockedGroups = [];
+        foreach ($blocked as $row) {
+            $blockedGroups[(int)$row['id']]['title'] = (string)$row['title'];
+            $blockedGroups[(int)$row['id']]['by'][] = $row;
+        }
+        ?>
+        <?php if ($blockedGroups === []): ?>
+            <p class="ok">Không có công việc nào đang bị chặn theo trạng thái hiện tại.</p>
         <?php else: ?>
-            <ul>
-                <?php foreach ($blocked as $row): ?>
-                    <li>#<?= (int)$row['id'] ?> <?= h($row['title']) ?>
-                        đang chờ #<?= (int)$row['blocked_by_id'] ?> <?= h($row['blocked_by']) ?>
-                        <span class="pill status-<?= h($row['dependency_status']) ?>"><?= h($row['dependency_status']) ?></span>
+            <p class="muted"><?= count($blockedGroups) ?> công việc đang chờ công việc tiên quyết.</p>
+            <ul class="blocked-groups">
+                <?php foreach ($blockedGroups as $blockedId => $group): ?>
+                    <li>
+                        <a href="/issues.php?project_id=<?= $projectId ?>&amp;id=<?= $blockedId ?>"><b>#<?= $blockedId ?> <?= h($group['title']) ?></b></a>
+                        đang chờ:
+                        <ul>
+                            <?php foreach ($group['by'] as $row): ?>
+                                <li><a href="/issues.php?project_id=<?= $projectId ?>&amp;id=<?= (int)$row['blocked_by_id'] ?>">#<?= (int)$row['blocked_by_id'] ?> <?= h($row['blocked_by']) ?></a>
+                                    <?= statusBadge($row['dependency_status']) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -342,7 +345,7 @@ if ($error !== '') {
                     <li>
                         #<?= (int)$dependency['issue_id'] ?> <?= h($dependency['issue_title']) ?>
                         phụ thuộc #<?= (int)$dependency['depends_on_id'] ?> <?= h($dependency['dependency_title']) ?>
-                        <span class="pill status-<?= h($dependency['dependency_status']) ?>"><?= h($dependency['dependency_status']) ?></span>
+                        <?= statusBadge($dependency['dependency_status']) ?>
                         <?php if ($canChange): ?>
                             <form method="post" class="inline-form">
                                 <input type="hidden" name="csrf" value="<?= h(csrfToken()) ?>">
@@ -350,7 +353,7 @@ if ($error !== '') {
                                 <input type="hidden" name="project_id" value="<?= $projectId ?>">
                                 <input type="hidden" name="issue_id" value="<?= (int)$dependency['issue_id'] ?>">
                                 <input type="hidden" name="depends_on_id" value="<?= (int)$dependency['depends_on_id'] ?>">
-                                <button class="danger" type="submit">Gỡ</button>
+                                <button class="danger" type="submit" aria-label="Gỡ quan hệ #<?= (int)$dependency['issue_id'] ?> phụ thuộc #<?= (int)$dependency['depends_on_id'] ?>">Gỡ</button>
                             </form>
                         <?php endif; ?>
                     </li>
@@ -363,6 +366,8 @@ if ($error !== '') {
 <script>
 (() => {
     const nodes = <?= json_encode($graphNodes, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const labels = <?= json_encode(['status' => STATUS_LABELS + ['blocked' => 'Đang bị chặn'], 'priority' => PRIORITY_LABELS, 'type' => ISSUE_TYPE_LABELS], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+    const lbl = (kind, value) => (labels[kind] && labels[kind][value]) || value;
     const edges = <?= json_encode($graphEdges, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     const svg = document.querySelector('[data-graph-svg]');
     const layer = document.querySelector('[data-graph-layer]');
@@ -417,9 +422,9 @@ if ($error !== '') {
             return `<g class="graph-node status-${esc(statusClass)}${selected ? ' is-selected' : ''}" tabindex="0" role="button" aria-label="Issue #${node.id}: ${esc(node.title)}" data-node-id="${node.id}" transform="translate(${point.x} ${point.y})">
                 <rect width="${cardWidth}" height="${cardHeight}" rx="10"></rect>
                 <circle class="graph-node-dot" cx="${cardWidth - 16}" cy="16" r="5"></circle>
-                <text class="graph-node-id" x="12" y="20">#${node.id} · ${esc(node.priority)}</text>
+                <text class="graph-node-id" x="12" y="20">#${node.id} · ${esc(lbl('priority', node.priority))}</text>
                 <text class="graph-node-title" x="12" y="42">${esc(node.title).slice(0, 28)}</text>
-                <text class="graph-node-status" x="12" y="64">${esc(node.is_blocked ? 'blocked' : node.status)}</text>
+                <text class="graph-node-status" x="12" y="64">${esc(lbl('status', node.is_blocked ? 'blocked' : node.status))}</text>
             </g>`;
         }).join('');
         layer.innerHTML = edgeMarkup + nodeMarkup;
@@ -471,7 +476,7 @@ if ($error !== '') {
             ? `<ul>${items.map((item) => `<li><a href="${esc(item.url)}">#${item.id} ${esc(item.title)}</a></li>`).join('')}</ul>`
             : '<p class="muted">Không có.</p>';
         const chain = (currentId, seen = new Set()) => {
-            if (seen.has(currentId)) return '<li class="cycle-warning">Cycle detected</li>';
+            if (seen.has(currentId)) return '<li class="cycle-warning">Phát hiện vòng</li>';
             const nextSeen = new Set(seen);
             nextSeen.add(currentId);
             const next = edges.filter((edge) => edge.source === currentId).map((edge) => nodeMap.get(edge.target)).filter(Boolean);
@@ -479,14 +484,14 @@ if ($error !== '') {
             return `<ul>${next.map((item) => `<li><a href="${esc(item.url)}">#${item.id} ${esc(item.title)}</a>${chain(item.id, nextSeen)}</li>`).join('')}</ul>`;
         };
         detail.innerHTML = `<h3>#${node.id} ${esc(node.title)}</h3>
-            <p><span class="pill status-${esc(node.is_blocked ? 'blocked' : node.status)}">${esc(node.is_blocked ? 'blocked' : node.status)}</span> · ${esc(node.priority)} · ${esc(node.issue_type)}</p>
+            <p><span class="pill status-${esc(node.is_blocked ? 'blocked' : node.status)}">${esc(lbl('status', node.is_blocked ? 'blocked' : node.status))}</span> · ${esc(lbl('priority', node.priority))} · ${esc(lbl('type', node.issue_type))}</p>
             <p>${esc(node.description || 'Chưa có mô tả.')}</p>
-            <p><strong>Assignee:</strong> ${esc(node.assignee || 'Chưa phân công')}</p>
+            <p><strong>Phụ trách:</strong> ${esc(node.assignee || 'Chưa phân công')}</p>
             <h4>Tiên quyết trực tiếp</h4>${list(dependencies)}
-            <h4>Chuỗi blocker</h4>${chain(id) || '<p class="muted">Không có blocker trong graph hiện tại.</p>'}
+            <h4>Chuỗi tiên quyết</h4>${chain(id) || '<p class="muted">Không có công việc tiên quyết trong đồ thị hiện tại.</p>'}
             <h4>Công việc phụ thuộc vào issue này</h4>${list(dependents)}
-            <a class="btn secondary" href="${esc(node.url)}">Mở chi tiết issue</a>`;
-        selectionStatus.textContent = `Đang chọn issue #${node.id}`;
+            <a class="btn secondary" href="${esc(node.url)}">Mở chi tiết công việc</a>`;
+        selectionStatus.textContent = `Đang chọn công việc #${node.id}`;
         selectedNodeId = id;
         draw(id);
     };
