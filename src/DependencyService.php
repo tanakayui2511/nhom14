@@ -52,8 +52,11 @@ final class DependencyService
      * Cạnh mới tạo vòng khi và chỉ khi từ $dependsOnId đã đi được tới $issueId.
      * Khi đó chuỗi vòng là: $issueId -> $dependsOnId -> ... -> $issueId.
      *
+     * Chuỗi trả về bắt đầu từ $dependsOnId, đi theo các cạnh đã có tới
+     * $issueId, rồi quay lại $dependsOnId bằng cạnh mới.
+     *
      * Ví dụ A->B, B->C đã có; thêm C->A: từ A đi được tới C (A, B, C) nên vòng
-     * trả về là [C, A, B, C].
+     * trả về là [A, B, C, A], hiển thị "#A → #B → #C → #A".
      *
      * @return int[]|null Chuỗi vòng (đỉnh đầu lặp lại ở cuối) hoặc null.
      */
@@ -66,7 +69,14 @@ final class DependencyService
         if ($path === null) {
             return null;
         }
-        return [$issueId, ...$path];
+        $path[] = $dependsOnId;
+        return $path;
+    }
+
+    /** Định dạng chuỗi vòng thành "#1 → #2 → #3 → #1". */
+    public static function formatChain(array $chain): string
+    {
+        return implode(' → ', array_map(static fn(int $id): string => '#' . $id, $chain));
     }
 
     /**
@@ -158,6 +168,10 @@ final class DependencyService
             throw new ValidationException('Một công việc không thể phụ thuộc chính nó.');
         }
         transaction($connection, function () use ($connection, $projectId, $issueId, $dependsOnId, $userId): void {
+            // Khóa tư vấn theo dự án (tự nhả khi transaction kết thúc): hai
+            // request thêm phụ thuộc cùng lúc phải xếp hàng, nên không thể
+            // mỗi bên thêm một nửa và cùng nhau tạo thành vòng.
+            self::lockProjectGraph($connection, $projectId);
             projectLock($connection, $projectId);
             if ($userId === null) {
                 throw new ForbiddenException(
@@ -188,9 +202,9 @@ final class DependencyService
             if ($duplicate !== null) {
                 throw new ConflictException('Quan hệ phụ thuộc đã tồn tại.');
             }
-            $path = self::path($connection, $projectId, $dependsOnId, $issueId);
+            // Đọc lại đồ thị SAU khi đã giữ khóa, rồi kiểm tra vòng bằng DFS.
+            $path = self::cycleIfAdded(self::adjacency($connection, $projectId), $issueId, $dependsOnId);
             if ($path !== null) {
-                $path[] = $dependsOnId;
                 $uniqueIds = array_values(array_unique($path));
                 $placeholders = [];
                 $params = [];
@@ -207,13 +221,14 @@ final class DependencyService
                 foreach ($rows as $row) {
                     $titles[(int)$row['id']] = (string)$row['title'];
                 }
-                $label = implode(' -> ', array_map(
+                $label = implode(' → ', array_map(
                     static fn(int $id): string => $titles[$id] ?? ('#' . $id),
                     $path
                 ));
-                $ids = implode(' -> ', array_map(static fn(int $id): string => '#' . $id, $path));
-                throw new ConflictException(
-                    'Từ chối quan hệ vòng: ' . $label . ' (' . $ids . ')'
+                throw new CycleException(
+                    'Từ chối quan hệ vòng: ' . self::formatChain($path) . ' (' . $label . ')',
+                    $path,
+                    $titles
                 );
             }
             $result = queryParams(
@@ -242,6 +257,7 @@ final class DependencyService
         ?int $userId = null
     ): void {
         transaction($connection, function () use ($connection, $projectId, $issueId, $dependsOnId, $userId): void {
+            self::lockProjectGraph($connection, $projectId);
             projectLock($connection, $projectId);
             if ($userId === null) {
                 throw new ForbiddenException(
@@ -256,6 +272,15 @@ final class DependencyService
                 ['developer', 'release_manager'],
                 'Bạn không có quyền thay đổi phụ thuộc trong dự án này.'
             );
+            // Hai công việc phải cùng thuộc dự án đang thao tác.
+            $rows = queryAll(
+                $connection,
+                'SELECT id FROM issues WHERE project_id=$1 AND id IN ($2,$3)',
+                [(string)$projectId, (string)$issueId, (string)$dependsOnId]
+            );
+            if (count($rows) !== 2) {
+                throw new NotFoundException('Hai công việc phải tồn tại và thuộc cùng dự án.');
+            }
             $result = queryParams(
                 $connection,
                 'DELETE FROM dependencies
@@ -272,6 +297,12 @@ final class DependencyService
                 ]);
             }
         });
+    }
+
+    /** pg_advisory_xact_lock(project_id): tuần tự hóa mọi thay đổi đồ thị của một dự án. */
+    private static function lockProjectGraph(PgSql\Connection $connection, int $projectId): void
+    {
+        queryParams($connection, 'SELECT pg_advisory_xact_lock($1::bigint)', [(string)$projectId]);
     }
 
     public static function listForProject(PgSql\Connection $connection, int $projectId): array

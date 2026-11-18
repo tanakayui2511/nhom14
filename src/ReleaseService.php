@@ -30,8 +30,10 @@ final class ReleaseService
             [
                 'code' => 'blockers',
                 'title' => 'Blocker đã kiểm thử lại hợp lệ',
-                'description' => 'Mỗi lỗi mức blocker phải có kết quả kiểm thử mới nhất là passed '
-                    . 'và được thực hiện trên đúng phiên bản dữ liệu hiện tại, kể cả khi đã closed.',
+                'description' => 'Mỗi công việc là blocker (hoặc từng là blocker kể từ khi gắn vào phiên bản) '
+                    . 'phải ở trạng thái verified/closed, có kết quả kiểm thử mới nhất là passed '
+                    . 'và lần kiểm thử đó làm trên đúng phiên bản dữ liệu hiện tại '
+                    . '(không có lần sửa nào sau khi test passed).',
             ],
             [
                 'code' => 'dependencies',
@@ -130,7 +132,29 @@ final class ReleaseService
                     t.tested_at AS latest_test_tested_at,t.id AS latest_test_id,
                     t.tester_id AS latest_test_tester_id,
                     t.audit_user_id AS latest_test_audit_user_id,
-                    t.audit_details AS latest_test_audit_details
+                    t.audit_details AS latest_test_audit_details,
+                    -- "Từng là blocker kể từ khi gắn vào phiên bản": lúc gắn đã là
+                    -- blocker (snapshot_priority ghi lúc addItem), hoặc có lần đổi
+                    -- ưu tiên từ/thành blocker SAU bản ghi audit release_item_added.
+                    (
+                        ri.snapshot_priority=\'blocker\'
+                        OR EXISTS (
+                            SELECT 1 FROM audit_log pa
+                            WHERE pa.project_id=ri.project_id
+                              AND pa.action=\'priority_changed\'
+                              AND pa.entity_type=\'issue\'
+                              AND pa.entity_id=ri.issue_id
+                              AND (pa.details->>\'old\'=\'blocker\' OR pa.details->>\'new\'=\'blocker\')
+                              AND pa.id > COALESCE((
+                                  SELECT max(ad.id) FROM audit_log ad
+                                  WHERE ad.project_id=ri.project_id
+                                    AND ad.action=\'release_item_added\'
+                                    AND ad.entity_type=\'release\'
+                                    AND ad.entity_id=ri.release_id
+                                    AND ad.details->>\'issue_id\'=ri.issue_id::text
+                              ), 0)
+                        )
+                    ) AS was_blocker
              FROM release_items ri
              LEFT JOIN issues i ON i.id=ri.issue_id
              LEFT JOIN users u ON u.id=i.assignee_id
@@ -251,15 +275,22 @@ final class ReleaseService
                     . ' đang ở trạng thái ' . ($status === '' ? 'không hợp lệ' : $status)
                     . ', chưa verified/closed.';
             }
-            if ($priority === 'blocker') {
+            // Điều kiện 4 (blockers): công việc là blocker nếu ưu tiên hiện tại là
+            // blocker HOẶC từng là blocker kể từ khi gắn vào phiên bản (chống
+            // việc hạ ưu tiên xuống low để lách kiểm tra).
+            $wasBlocker = in_array((string)($item['was_blocker'] ?? 'f'), ['t', '1', 'true'], true);
+            if ($priority === 'blocker' || $wasBlocker) {
                 $blockerProblem = self::blockerTestProblem(
                     $item['latest_test_result'],
                     $item['latest_test_version'],
                     $version,
-                    $latestTrusted
+                    $latestTrusted,
+                    $status
                 );
                 if ($blockerProblem !== null) {
-                    $problems['blockers'][] = 'Blocker #' . $issueId . ' ' . $blockerProblem . '.';
+                    $problems['blockers'][] = 'Blocker #' . $issueId
+                        . ($priority === 'blocker' ? '' : ' (từng là blocker kể từ khi gắn vào phiên bản)')
+                        . ' ' . $blockerProblem . '.';
                 }
             }
             // Điều kiện 5 (dependencies): toàn bộ công việc tiên quyết (bắc cầu) đã hoàn tất.
@@ -284,7 +315,8 @@ final class ReleaseService
                         $latestResult,
                         $latestVersion,
                         $dependencyVersion,
-                        $latestTrusted
+                        $latestTrusted,
+                        $dependencyStatus
                     );
                     if ($blockerProblem !== null) {
                         $reason = 'blocker #' . (int)$dependency['id'] . ' ' . $blockerProblem;
@@ -386,6 +418,15 @@ final class ReleaseService
         });
     }
 
+    /**
+     * Chốt phát hành (ready → released) trong MỘT transaction:
+     *  1. khóa dự án và SELECT ... FOR UPDATE dòng releases, nên hai người bấm
+     *     "Chốt" cùng lúc sẽ xếp hàng; người sau thấy status đã là released;
+     *  2. chạy lại check() trên dữ liệu đang bị khóa;
+     *  3. ghi snapshot từng release_items (kiểm tra số dòng bị UPDATE);
+     *  4. UPDATE releases ... WHERE status='ready'; 0 dòng => ném lỗi, toàn bộ
+     *     transaction ROLLBACK, không có snapshot dở dang.
+     */
     public static function release(
         PgSql\Connection $connection,
         int $releaseId,
@@ -627,25 +668,37 @@ final class ReleaseService
         });
     }
 
+    /**
+     * Blocker chỉ đạt khi đồng thời:
+     *  1. trạng thái hiện tại là verified hoặc closed (bị mở lại => trượt);
+     *  2. kết quả kiểm thử MỚI NHẤT là passed;
+     *  3. lần test đó làm trên đúng version hiện tại, tức là không có lần cập
+     *     nhật nội dung/trạng thái nào sau lần test passed (mỗi lần sửa đều
+     *     tăng version);
+     *  4. lần test có bằng chứng nguồn gốc hợp lệ trong audit_log.
+     */
     private static function blockerTestProblem(
         mixed $latestResult,
         mixed $latestVersion,
         int $version,
-        bool $latestTrusted
+        bool $latestTrusted,
+        string $status = 'verified'
     ): ?string {
+        $reasons = [];
+        if (!in_array($status, ['verified', 'closed'], true)) {
+            $reasons[] = 'đang ở trạng thái ' . $status . ' (' . statusLabel($status) . '), chưa verified/closed';
+        }
         if ($latestResult === null) {
-            return 'chưa có kết quả kiểm thử lại';
+            $reasons[] = 'chưa có kết quả kiểm thử lại';
+        } elseif ((string)$latestResult !== 'passed') {
+            $reasons[] = 'có kết quả kiểm thử mới nhất là ' . (string)$latestResult . ', chưa đạt';
+        } elseif ($latestVersion === null || (int)$latestVersion !== $version) {
+            $reasons[] = 'có kết quả passed nhưng đã lỗi thời so với phiên bản dữ liệu hiện tại '
+                . '(công việc đã bị sửa hoặc mở lại sau lần kiểm thử)';
+        } elseif (!$latestTrusted) {
+            $reasons[] = 'có kết quả passed nhưng thiếu bằng chứng nguồn gốc hợp lệ';
         }
-        if ((string)$latestResult !== 'passed') {
-            return 'có kết quả kiểm thử mới nhất là ' . (string)$latestResult . ', chưa đạt';
-        }
-        if ($latestVersion === null || (int)$latestVersion !== $version) {
-            return 'có kết quả passed nhưng đã lỗi thời so với phiên bản dữ liệu hiện tại';
-        }
-        if (!$latestTrusted) {
-            return 'có kết quả passed nhưng thiếu bằng chứng nguồn gốc hợp lệ';
-        }
-        return null;
+        return $reasons === [] ? null : implode('; ', $reasons);
     }
 
     private static function latestTestTrusted(

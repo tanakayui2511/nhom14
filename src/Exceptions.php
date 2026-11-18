@@ -14,6 +14,33 @@ class ConflictException extends AppException
 {
 }
 
+/**
+ * Xung đột khóa lạc quan khi cập nhật công việc. Mang theo bản hiện tại
+ * trong CSDL để giao diện hiển thị so sánh hai bản cạnh nhau.
+ */
+class VersionConflictException extends ConflictException
+{
+    public function __construct(string $message, public readonly array $current = [])
+    {
+        parent::__construct($message);
+    }
+}
+
+/**
+ * Từ chối thêm phụ thuộc vì tạo vòng. $cycle là chuỗi id (đỉnh đầu lặp lại
+ * ở cuối), $titles là [id => tiêu đề] để giao diện tô đậm từng mắt xích.
+ */
+class CycleException extends ConflictException
+{
+    public function __construct(
+        string $message,
+        public readonly array $cycle = [],
+        public readonly array $titles = []
+    ) {
+        parent::__construct($message);
+    }
+}
+
 class NotFoundException extends AppException
 {
 }

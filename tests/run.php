@@ -95,8 +95,8 @@ testCase('TEST 1: từ chối chu trình và không lưu quan hệ vòng', funct
     $exception = expectException(
         static fn() => DependencyService::add($connection, $project, $c, $a, $devA),
         ConflictException::class,
-        'A -> B -> C -> A',
-        'Phải từ chối chu trình kèm nhãn A -> B -> C -> A'
+        'A → B → C → A',
+        'Phải từ chối chu trình kèm nhãn A → B → C → A'
     );
     assertContains('vòng', $exception->getMessage(), 'Thông báo phải nói rõ quan hệ vòng');
     $bad = queryOne(
@@ -1862,7 +1862,7 @@ testCase('TEST K: recordTest tăng version đúng một lần và snapshot dùng
     $afterSecond = testIssueSnapshot($connection, $issue);
     assertSame(3, $second, 'Ghi failed cũng phải tăng version');
     assertSame(3, (int)$afterSecond['version'], 'Failed phải tăng version đúng 1');
-    assertSame('retest', (string)$afterSecond['status'], 'Failed phải chuyển retest');
+    assertSame('in_progress', (string)$afterSecond['status'], 'Failed phải trả về in_progress');
     $secondTest = IssueService::latestTest($connection, $issue);
     assertSame(3, (int)$secondTest['issue_version'], 'Test failed phải lưu version 3');
     assertSame(
@@ -2905,6 +2905,220 @@ testCase('AUDIT-008: item non-blocker chưa hoàn tất chặn ready cho đến 
     ]);
     ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager');
     assertSame('ready', (string)queryOne($connection, 'SELECT status FROM releases WHERE id=$1', [(string)$release])['status'], 'Item verified phải cho phép ready khi các gate khác đạt');
+});
+
+// ---------------------------------------------------------------------------
+// Hồi quy cho các lỗi nghiệp vụ ở Phần 2.
+// ---------------------------------------------------------------------------
+
+function regressionUpdatePayload(PgSql\Connection $connection, int $issueId, array $overrides = []): array
+{
+    $current = testIssueSnapshot($connection, $issueId);
+    return array_merge([
+        'title' => (string)$current['title'],
+        'description' => (string)$current['description'],
+        'steps' => (string)$current['reproduction_steps'],
+        'priority' => (string)$current['priority'],
+        'status' => (string)$current['status'],
+        'assignee_id' => $current['assignee_id'] === null ? '' : (string)$current['assignee_id'],
+        'commit_url' => (string)$current['commit_url'],
+    ], $overrides);
+}
+
+testCase('BUG 2.1a: developer không được hạ ưu tiên blocker', function () use ($connection, $devA): void {
+    $project = testInsertProject($connection, 'Bug21a');
+    $issue = testInsertIssue($connection, $project, 'Blocker không được hạ', 'blocker', 'in_progress', $devA, $devA);
+    $before = testIssueSnapshot($connection, $issue);
+    expectException(
+        static fn() => IssueService::update(
+            $connection,
+            $project,
+            $devA,
+            'developer',
+            $issue,
+            (int)$before['version'],
+            regressionUpdatePayload($connection, $issue, ['priority' => 'low'])
+        ),
+        ForbiddenException::class,
+        'Blocker',
+        'Developer hạ blocker phải bị từ chối'
+    );
+    expectException(
+        static fn() => IssueService::changePriority($connection, $project, $devA, $issue, (int)$before['version'], 'low'),
+        ForbiddenException::class,
+        'Blocker',
+        'changePriority bởi developer phải bị từ chối'
+    );
+    $after = testIssueSnapshot($connection, $issue);
+    assertSame('blocker', (string)$after['priority'], 'Ưu tiên phải giữ blocker');
+    assertSame((int)$before['version'], (int)$after['version'], 'Version không được đổi');
+});
+
+testCase('BUG 2.1b/c: hạ blocker có audit và vẫn bị coi là blocker khi kiểm tra phát hành', function () use (
+    $connection,
+    $devA,
+    $testerA,
+    $releaseA
+): void {
+    $project = testInsertProject($connection, 'Bug21c');
+    $issue = testInsertIssue($connection, $project, 'Blocker bị hạ sau khi gắn', 'blocker', 'in_progress', $devA, $devA);
+    $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
+        'version_name' => 'bug21c',
+        'description' => '',
+    ]);
+    ReleaseService::addItem($connection, $release, $project, $issue, $releaseA, 'release_manager');
+    $version = (int)testIssueSnapshot($connection, $issue)['version'];
+    IssueService::changePriority($connection, $project, $releaseA, $issue, $version, 'low');
+    $audit = queryOne(
+        $connection,
+        "SELECT details FROM audit_log WHERE action='priority_changed' AND entity_id=\$1 ORDER BY id DESC LIMIT 1",
+        [(string)$issue]
+    );
+    assertTrue($audit !== null, 'Phải ghi audit priority_changed');
+    $details = json_decode((string)$audit['details'], true);
+    assertSame('blocker', $details['old'] ?? null, 'Audit phải có giá trị cũ');
+    assertSame('low', $details['new'] ?? null, 'Audit phải có giá trị mới');
+    // Developer đóng việc mà không test lại: phải vẫn bị chặn như blocker.
+    queryParams($connection, "UPDATE issues SET status='closed',version=version+1 WHERE id=\$1", [(string)$issue]);
+    $check = ReleaseService::check($connection, $release, $project, 'release_manager');
+    assertSame(false, $check['checks']['blockers']['passed'], 'Công việc từng là blocker vẫn phải qua điều kiện blocker');
+    assertContains('từng là blocker', implode("\n", $check['checks']['blockers']['problems']), 'Phải giải thích lý do');
+});
+
+testCase('BUG 2.2: blocker có test passed cũ rồi bị mở lại thì không đạt', function () use (
+    $connection,
+    $devA,
+    $testerA,
+    $releaseA
+): void {
+    $project = testInsertProject($connection, 'Bug22');
+    $issue = testInsertIssue($connection, $project, 'Blocker mở lại', 'blocker', 'resolved', $devA, $devA);
+    $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
+        'version_name' => 'bug22',
+        'description' => '',
+    ]);
+    ReleaseService::addItem($connection, $release, $project, $issue, $releaseA, 'release_manager');
+    IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
+        'version' => (string)testIssueSnapshot($connection, $issue)['version'],
+        'result' => 'passed',
+        'notes' => 'Đạt',
+    ]);
+    $check = ReleaseService::check($connection, $release, $project, 'release_manager');
+    assertSame(true, $check['checks']['blockers']['passed'], 'Blocker vừa passed phải đạt');
+    $version = (int)testIssueSnapshot($connection, $issue)['version'];
+    IssueService::update(
+        $connection,
+        $project,
+        $devA,
+        'developer',
+        $issue,
+        $version,
+        regressionUpdatePayload($connection, $issue, ['status' => 'open'])
+    );
+    $check = ReleaseService::check($connection, $release, $project, 'release_manager');
+    assertSame(false, $check['checks']['blockers']['passed'], 'Blocker bị mở lại phải không đạt');
+    expectException(
+        static fn() => ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager'),
+        ValidationException::class,
+        'Blocker #' . $issue,
+        'Blocker mở lại phải chặn ready'
+    );
+});
+
+testCase('BUG 2.3: failed hoặc blocked trả công việc về in_progress, passed thành verified', function () use (
+    $connection,
+    $devA,
+    $testerA
+): void {
+    $project = testInsertProject($connection, 'Bug23');
+    $issue = testInsertIssue($connection, $project, 'Kiểm thử đổi trạng thái', 'high', 'resolved', $devA, $devA);
+    foreach (['failed' => 'in_progress', 'blocked' => 'in_progress', 'passed' => 'verified'] as $result => $expected) {
+        IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
+            'version' => (string)testIssueSnapshot($connection, $issue)['version'],
+            'result' => $result,
+            'notes' => $result,
+        ]);
+        assertSame($expected, (string)testIssueSnapshot($connection, $issue)['status'], 'Kết quả ' . $result);
+    }
+    expectException(
+        static fn() => IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
+            'version' => '1',
+            'result' => 'passed',
+            'notes' => 'form cũ',
+        ]),
+        ConflictException::class,
+        'XUNG ĐỘT',
+        'Ghi test với version cũ phải báo xung đột'
+    );
+});
+
+testCase('BUG 2.6: gỡ phụ thuộc kiểm tra quyền và cùng dự án', function () use (
+    $connection,
+    $core,
+    $mobile,
+    $devA,
+    $testerA
+): void {
+    $project = testInsertProject($connection, 'Bug26');
+    $a = testInsertIssue($connection, $project, 'Dep A', 'medium', 'open', $devA, $devA);
+    $b = testInsertIssue($connection, $project, 'Dep B', 'medium', 'open', $devA, $devA);
+    DependencyService::add($connection, $project, $a, $b, $devA);
+    expectException(
+        static fn() => DependencyService::remove($connection, $project, $a, $b, $testerA),
+        ForbiddenException::class,
+        null,
+        'Tester không được gỡ phụ thuộc'
+    );
+    $mobileIssue = (int)queryOne($connection, 'SELECT id FROM issues WHERE project_id=$1 LIMIT 1', [(string)$mobile])['id'];
+    expectException(
+        static fn() => DependencyService::remove($connection, $project, $a, $mobileIssue, $devA),
+        NotFoundException::class,
+        'cùng dự án',
+        'Không được gỡ phụ thuộc với công việc dự án khác'
+    );
+    DependencyService::remove($connection, $project, $a, $b, $devA);
+    assertSame(null, queryOne(
+        $connection,
+        'SELECT 1 FROM dependencies WHERE issue_id=$1 AND depends_on_id=$2',
+        [(string)$a, (string)$b]
+    ), 'Phụ thuộc phải được gỡ');
+});
+
+testCase('BUG 2.7: phiên bản ready tự hạ về planned khi công việc bị sửa', function () use (
+    $connection,
+    $devA,
+    $testerA,
+    $releaseA
+): void {
+    $project = testInsertProject($connection, 'Bug27');
+    $issue = testInsertIssue($connection, $project, 'Ready rồi bị sửa', 'medium', 'resolved', $devA, $devA);
+    $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
+        'version_name' => 'bug27',
+        'description' => '',
+    ]);
+    ReleaseService::addItem($connection, $release, $project, $issue, $releaseA, 'release_manager');
+    IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
+        'version' => (string)testIssueSnapshot($connection, $issue)['version'],
+        'result' => 'passed',
+        'notes' => 'ok',
+    ]);
+    ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager');
+    IssueService::update(
+        $connection,
+        $project,
+        $devA,
+        'developer',
+        $issue,
+        (int)testIssueSnapshot($connection, $issue)['version'],
+        regressionUpdatePayload($connection, $issue, ['status' => 'in_progress'])
+    );
+    assertSame('planned', (string)queryOne($connection, 'SELECT status FROM releases WHERE id=$1', [(string)$release])['status'], 'Ready phải tự hạ về planned');
+    expectException(
+        static fn() => ReleaseService::release($connection, $release, $project, $releaseA, 'release_manager'),
+        ConflictException::class,
+        'ready',
+        'Phiên bản planned không được chốt'
+    );
 });
 
 testFinish();
