@@ -127,6 +127,7 @@ final class ReleaseService
             'SELECT ri.*,i.title AS issue_title,i.status AS issue_status,i.priority AS issue_priority,
                     i.version AS issue_version,i.project_id AS issue_project_id,
                     i.description AS issue_description,i.commit_url AS issue_commit_url,
+                    i.issue_type AS issue_type,
                     COALESCE(u.full_name, \'\') AS issue_assignee,
                     t.result AS latest_test_result,t.issue_version AS latest_test_version,
                     t.tested_at AS latest_test_tested_at,t.id AS latest_test_id,
@@ -481,7 +482,8 @@ final class ReleaseService
                          snapshot_commit_url=$6,
                          snapshot_test_result=$7,
                          snapshot_test_version=$8,
-                         snapshot_test_tested_at=$9
+                         snapshot_test_tested_at=$9,
+                         snapshot_issue_type=$13
                      WHERE release_id=$10 AND project_id=$11 AND issue_id=$12',
                     [
                         (string)($item['issue_title'] ?? ''),
@@ -496,6 +498,7 @@ final class ReleaseService
                         (string)$releaseId,
                         (string)$projectId,
                         (string)$item['issue_id'],
+                        $item['issue_type'] ?? null,
                     ]
                 );
                 if (pg_affected_rows($snapshot) !== 1) {
@@ -600,8 +603,8 @@ final class ReleaseService
                 'INSERT INTO release_items(
                     release_id,issue_id,project_id,snapshot_title,snapshot_status,snapshot_priority,
                     snapshot_assignee,snapshot_description,snapshot_commit_url,snapshot_test_result,
-                    snapshot_test_version,snapshot_test_tested_at
-                 ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,\'not_tested\'),$11,$12)',
+                    snapshot_test_version,snapshot_test_tested_at,snapshot_issue_type
+                 ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,\'not_tested\'),$11,$12,$13)',
                 [
                     (string)$releaseId,
                     (string)$issueId,
@@ -615,6 +618,7 @@ final class ReleaseService
                     $issue['latest_test_result'],
                     $issue['latest_test_version'],
                     $issue['latest_test_tested_at'],
+                    (string)$issue['issue_type'],
                 ]
             );
             if (pg_affected_rows($inserted) !== 1) {

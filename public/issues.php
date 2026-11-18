@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../src/IssueService.php';
+require __DIR__ . '/../src/History.php';
 
 $user = requireLogin();
 $connection = db();
@@ -113,6 +114,8 @@ $issues = $projectId > 0
 $detail = null;
 $comments = [];
 $testResults = [];
+$history = [];
+$releasedIn = [];
 if ($selected > 0 && $projectId > 0) {
     $detail = queryOne(
         $connection,
@@ -140,6 +143,8 @@ if ($selected > 0 && $projectId > 0) {
              WHERE t.issue_id=$1 ORDER BY t.id DESC',
             [(string)$selected]
         );
+        $history = IssueService::history($connection, $projectId, $selected);
+        $releasedIn = IssueService::releasedVersions($connection, $projectId, $selected);
     }
 }
 
@@ -331,6 +336,46 @@ if ($conflict && $selected > 0 && $projectId > 0) {
                         <?php endif; ?>
                     </p>
                 <?php endforeach; ?>
+            <?php endif; ?>
+
+            <h3>Đã nằm trong các phiên bản đã chốt</h3>
+            <?php if ($releasedIn === []): ?>
+                <p class="muted">Công việc chưa thuộc phiên bản nào đã chốt phát hành.</p>
+            <?php else: ?>
+                <ul>
+                    <?php foreach ($releasedIn as $rel): ?>
+                        <li><a href="/release-notes.php?id=<?= (int)$rel['id'] ?>"><?= h($rel['version_name']) ?></a>
+                            · trạng thái khi chốt: <?= h(statusLabel($rel['snapshot_status'])) ?>
+                            · kiểm thử: <?= h(testResultLabel($rel['snapshot_test_result'])) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <h3>Lịch sử thay đổi</h3>
+            <?php
+            $historyRows = array_values(array_filter(array_map(
+                static fn(array $row): ?array => ($d = History::describe($row)) === null ? null : $d + ['row' => $row],
+                $history
+            )));
+            ?>
+            <?php if ($historyRows === []): ?>
+                <p class="muted">Chưa có thay đổi nào được ghi nhận.</p>
+            <?php else: ?>
+                <ol class="history-list">
+                    <?php foreach ($historyRows as $entry): ?>
+                        <li>
+                            <b><?= h($entry['row']['user_name']) ?></b> <?= h($entry['text']) ?>
+                            <span class="muted"><?= h(date('d/m/Y H:i', strtotime((string)$entry['row']['created_at']))) ?></span>
+                            <?php if ($entry['changes'] !== []): ?>
+                                <ul>
+                                    <?php foreach ($entry['changes'] as $change): ?>
+                                        <li><?= h($change['field']) ?>: <del><?= h($change['old']) ?></del> → <ins><?= h($change['new']) ?></ins></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
             <?php endif; ?>
         </section>
     <?php endif; ?>

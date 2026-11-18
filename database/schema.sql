@@ -6,3 +6,4 @@
 \i database/migrations/004_release_history_guards.sql
 \i database/migrations/005_release_insert_guard.sql
 \i database/migrations/006_runtime_guards.sql
+\i database/migrations/007_release_notes_columns.sql

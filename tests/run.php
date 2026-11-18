@@ -3121,4 +3121,80 @@ testCase('BUG 2.7: phiên bản ready tự hạ về planned khi công việc b�
     );
 });
 
+testCase('PHẦN 3: xuất ghi chú nhóm theo loại, kiểm tra quyền, lịch sử và tra ngược phiên bản', function () use (
+    $connection,
+    $devA,
+    $testerA,
+    $releaseA
+): void {
+    require_once __DIR__ . '/../src/History.php';
+    $project = testInsertProject($connection, 'Part3');
+    $bug = testInsertIssue($connection, $project, 'P3 sửa lỗi', 'high', 'resolved', $devA, $devA);
+    $feature = testInsertIssue($connection, $project, 'P3 tính năng', 'medium', 'resolved', $devA, $devA);
+    queryParams($connection, "UPDATE issues SET issue_type='feature',commit_url='https://git.example/pr/7' WHERE id=\$1", [(string)$feature]);
+    $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
+        'version_name' => 'p3-1.0',
+        'description' => 'Bản thử phần 3',
+    ]);
+    foreach ([$bug, $feature] as $issue) {
+        ReleaseService::addItem($connection, $release, $project, $issue, $releaseA, 'release_manager');
+        IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
+            'version' => (string)testIssueSnapshot($connection, $issue)['version'],
+            'result' => 'passed',
+            'notes' => 'ok',
+        ]);
+    }
+    expectException(
+        static fn() => ReleaseNotes::export($connection, $release, $devA, 'md'),
+        ConflictException::class,
+        'đã chốt',
+        'Chưa chốt thì không xuất'
+    );
+    ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager');
+    ReleaseService::release($connection, $release, $project, $releaseA, 'release_manager');
+    $md = ReleaseNotes::export($connection, $release, $devA, 'md');
+    assertSame('release-notes-p3-1.0.md', $md['filename'], 'Tên file md');
+    assertContains('## Tính năng (1)', $md['content'], 'Có nhóm Tính năng');
+    assertContains('## Sửa lỗi (1)', $md['content'], 'Có nhóm Sửa lỗi');
+    assertContains('https://git.example/pr/7', $md['content'], 'Có link PR');
+    assertContains('Đạt (passed)', $md['content'], 'Có kết quả kiểm thử khi chốt');
+    $txt = ReleaseNotes::export($connection, $release, $devA, 'txt');
+    assertContains('#' . $feature . ' P3 tính năng', $txt['content'], 'TXT có #id và tiêu đề');
+    assertNotContains('##', $txt['content'], 'TXT không chứa cú pháp Markdown');
+    $outsider = testUserId($connection, 'dev_b');
+    expectException(
+        static fn() => ReleaseNotes::export($connection, $release, $outsider, 'md'),
+        ForbiddenException::class,
+        null,
+        'Người ngoài dự án không xuất được'
+    );
+    expectException(
+        static fn() => ReleaseNotes::export($connection, $release, $devA, 'pdf'),
+        ValidationException::class,
+        'Định dạng',
+        'Định dạng lạ bị từ chối'
+    );
+    $released = IssueService::releasedVersions($connection, $project, $bug);
+    assertSame(['p3-1.0'], array_column($released, 'version_name'), 'Tra ngược phiên bản đã chốt');
+    IssueService::update(
+        $connection,
+        $project,
+        $devA,
+        'developer',
+        $bug,
+        (int)testIssueSnapshot($connection, $bug)['version'],
+        regressionUpdatePayload($connection, $bug, ['title' => 'P3 sửa lỗi (đổi tên)', 'status' => 'in_progress'])
+    );
+    $entries = array_values(array_filter(array_map(
+        static fn(array $row): ?array => History::describe($row),
+        IssueService::history($connection, $project, $bug)
+    )));
+    assertSame('cập nhật', $entries[0]['text'], 'Bản ghi mới nhất là cập nhật');
+    $fields = array_column($entries[0]['changes'], 'new', 'field');
+    assertSame('P3 sửa lỗi (đổi tên)', $fields['Tiêu đề'] ?? null, 'Lịch sử có tiêu đề mới');
+    assertSame('Đang xử lý', $fields['Trạng thái'] ?? null, 'Lịch sử dùng nhãn tiếng Việt');
+    $texts = array_column($entries, 'text');
+    assertTrue(in_array('ghi kết quả kiểm thử: Đạt', $texts, true), 'Lịch sử có lần kiểm thử');
+});
+
 testFinish();

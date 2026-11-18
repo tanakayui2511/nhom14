@@ -29,10 +29,9 @@ $format = strtolower((string)($_GET['format'] ?? 'html'));
 
 if (in_array($format, ['markdown', 'md', 'txt'], true)) {
     $markdown = $format !== 'txt';
-    $content = ReleaseNotes::markdown($connection, $id);
-    if (!$markdown) {
-        $content = preg_replace('/^#{1,3} /m', '', $content);
-    }
+    $content = $markdown
+        ? ReleaseNotes::markdown($connection, $id)
+        : ReleaseNotes::text($connection, $id);
     $safeVersion = preg_replace('/[^A-Za-z0-9._-]+/', '-', (string)$release['version_name']);
     $filename = 'release-' . ($safeVersion === '' ? 'notes' : $safeVersion) . ($markdown ? '.md' : '.txt');
     header('Content-Type: ' . ($markdown ? 'text/markdown' : 'text/plain') . '; charset=utf-8');
