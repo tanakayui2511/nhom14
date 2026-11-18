@@ -31,7 +31,9 @@ bash lab.sh run
 
 Mở `http://127.0.0.1:8105`. Dừng máy chủ bằng Ctrl+C.
 
-- `db-config` ghi cấu hình vào `.local/db.json` với quyền hạn chế; không commit thư mục `.local/`. Công cụ chỉ hỏi 5 khóa kết nối; nếu DB yêu cầu TLS, thêm `PGSSLMODE`/`PGSSLROOTCERT` vào file sau khi tạo (xem mục “Bảo vệ cấu hình và backup”).
+- File mẫu `.local/db.example.json` (mật khẩu để trống) cho biết các khóa cần có. Có thể chép thành `.local/db.json` rồi điền mật khẩu thay cho `db-config`.
+- **Không commit thư mục `.local/`** (chỉ file mẫu được phép). Nếu mật khẩu CSDL từng bị lộ (commit nhầm, gửi qua chat…), hãy đổi ngay: `ALTER ROLE releasetracker PASSWORD '...';` rồi chạy lại `bash lab.sh db-config`.
+- `db-config` ghi cấu hình vào `.local/db.json` với quyền hạn chế. Công cụ chỉ hỏi 5 khóa kết nối; nếu DB yêu cầu TLS, thêm `PGSSLMODE`/`PGSSLROOTCERT` vào file sau khi tạo (xem mục “Bảo vệ cấu hình và backup”).
 - `migrate` chạy các file trong `database/migrations/` theo thứ tự và ghi nhận vào `schema_migrations`.
 - `seed` chạy migration rồi nạp dữ liệu mẫu. Có thể chạy lại; seed dùng `ON CONFLICT` để tránh nhân đôi dữ liệu.
 - `database/schema.sql` vẫn là entry point psql cho môi trường mới, gọi lần lượt ba migration.
@@ -62,7 +64,7 @@ Mở `http://127.0.0.1:8105`. Dừng máy chủ bằng Ctrl+C.
 - **Mẫu thủ công (nếu không dùng công cụ):**
   ```bash
   umask 077
-  backup="$HOME/.local/share/releasetracker/backups/communitypass_$(date -u +%Y%m%dT%H%M%SZ).dump"
+  backup="$HOME/.local/share/releasetracker/backups/releasetracker_$(date -u +%Y%m%dT%H%M%SZ).dump"
   pg_dump -Fc -f "$backup"
   sha256sum "$backup" > "$backup.sha256"
   age -r "$BACKUP_RECIPIENT" -o "$backup.age" "$backup"

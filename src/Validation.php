@@ -68,13 +68,25 @@ function postOptionalInt(array $input, string $key, int $min = 1, int $max = PHP
     return postInt($input, $key, $min, $max, $label);
 }
 
-function postEnum(array $input, string $key, array $allowed, string $label = 'Giá trị'): string
+/**
+ * Kiểm tra một giá trị enum. Sai thì ném ValidationException với thông báo
+ * tiếng Việt liệt kê các lựa chọn hợp lệ, thay vì để CSDL báo lỗi CHECK.
+ */
+function validateEnum(mixed $raw, array $allowed, string $label = 'Giá trị'): string
 {
-    $raw = $input[$key] ?? '';
     if (!is_string($raw) || !in_array($raw, $allowed, true)) {
-        throw new ValidationException($label . ' không hợp lệ.');
+        $choices = implode(', ', array_map(
+            static fn(string $value): string => function_exists('enumLabel') ? enumLabel($value) : $value,
+            $allowed
+        ));
+        throw new ValidationException($label . ' không hợp lệ. Hãy chọn một trong: ' . $choices . '.');
     }
     return $raw;
+}
+
+function postEnum(array $input, string $key, array $allowed, string $label = 'Giá trị'): string
+{
+    return validateEnum($input[$key] ?? '', $allowed, $label);
 }
 
 function postUrl(array $input, string $key, int $max = 500, string $label = 'URL'): string
@@ -91,32 +103,34 @@ function postUrl(array $input, string $key, int $max = 500, string $label = 'URL
     return $value;
 }
 
+// Các hàm dưới đây giữ lại cho mã cũ; giá trị thật nằm ở hằng trong App.php.
+
 function issuePriorities(): array
 {
-    return ['blocker', 'critical', 'high', 'medium', 'low'];
+    return ISSUE_PRIORITIES;
 }
 
 function issueStatuses(): array
 {
-    return ['open', 'in_progress', 'resolved', 'retest', 'verified', 'closed'];
+    return ISSUE_STATUSES;
 }
 
 function issueTypes(): array
 {
-    return ['bug', 'task', 'feature'];
+    return ISSUE_TYPES;
 }
 
 function testResults(): array
 {
-    return ['passed', 'failed', 'blocked'];
+    return TEST_RESULTS;
 }
 
 function projectRoles(): array
 {
-    return ['developer', 'tester', 'release_manager', 'admin'];
+    return PROJECT_ROLES;
 }
 
 function releaseStatuses(): array
 {
-    return ['planned', 'ready', 'released'];
+    return RELEASE_STATUSES;
 }

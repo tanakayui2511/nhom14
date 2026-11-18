@@ -176,12 +176,12 @@ final class ReleaseService
                  WHERE d.issue_project_id=$2 AND d.depends_on_project_id=$2
              )
              SELECT dc.release_item_id AS issue_id,b.id,b.title,b.status,b.priority,b.version AS issue_version,
-                     t.result AS latest_test_result,t.issue_version AS latest_test_version,
+                    t.result AS latest_test_result,t.issue_version AS latest_test_version,
                     t.tester_id AS latest_test_tester_id,
                     t.audit_user_id AS latest_test_audit_user_id,
                     t.audit_details AS latest_test_audit_details
-              FROM dependency_closure dc
-              JOIN issues b ON b.id=dc.dependency_id AND b.project_id=$2
+             FROM dependency_closure dc
+             JOIN issues b ON b.id=dc.dependency_id AND b.project_id=$2
              LEFT JOIN LATERAL (
                  SELECT tr.result,tr.issue_version,tr.tester_id,
                         al.user_id AS audit_user_id,al.details AS audit_details
@@ -200,8 +200,8 @@ final class ReleaseService
                  ORDER BY tr.id DESC
                  LIMIT 1
              ) t ON true
-              ORDER BY dc.release_item_id,b.id',
-             [(string)$releaseId, (string)$projectId]
+             ORDER BY dc.release_item_id,b.id',
+            [(string)$releaseId, (string)$projectId]
         );
         $depsByIssue = [];
         foreach ($dependencies as $dependency) {
@@ -218,11 +218,13 @@ final class ReleaseService
             'snapshot' => [],
             'role' => [],
         ];
+        // Điều kiện 1 (items): phiên bản phải có ít nhất một công việc.
         if ($items === []) {
             $problems['items'][] = 'Phiên bản chưa có công việc nào.';
         }
         foreach ($items as $item) {
             $issueId = (int)$item['issue_id'];
+            // Điều kiện 2 (project_items): item và issue nguồn cùng dự án với phiên bản.
             if ((int)$item['project_id'] !== $projectId
                 || (int)($item['issue_project_id'] ?? 0) !== $projectId) {
                 $problems['project_items'][] = 'Công việc #' . $issueId . ' không thuộc đúng dự án.';
@@ -238,10 +240,12 @@ final class ReleaseService
                 $item['latest_test_audit_user_id'] ?? null,
                 $item['latest_test_audit_details'] ?? null
             );
-            if ($title === '' || !in_array($status, issueStatuses(), true)
-                || !in_array($priority, issuePriorities(), true) || $version < 1) {
+            // Điều kiện 7 (snapshot): dữ liệu đủ hợp lệ để chụp snapshot.
+            if ($title === '' || !in_array($status, ISSUE_STATUSES, true)
+                || !in_array($priority, ISSUE_PRIORITIES, true) || $version < 1) {
                 $problems['snapshot'][] = 'Công việc #' . $issueId . ' có dữ liệu snapshot không hợp lệ.';
             }
+            // Điều kiện 3 (item_status): mọi công việc phải verified hoặc closed.
             if (!in_array($status, ['verified', 'closed'], true)) {
                 $problems['item_status'][] = 'Công việc #' . $issueId
                     . ' đang ở trạng thái ' . ($status === '' ? 'không hợp lệ' : $status)
@@ -258,6 +262,7 @@ final class ReleaseService
                     $problems['blockers'][] = 'Blocker #' . $issueId . ' ' . $blockerProblem . '.';
                 }
             }
+            // Điều kiện 5 (dependencies): toàn bộ công việc tiên quyết (bắc cầu) đã hoàn tất.
             foreach ($depsByIssue[$issueId] ?? [] as $dependency) {
                 $dependencyStatus = (string)$dependency['status'];
                 $dependencyPriority = (string)$dependency['priority'];
@@ -305,11 +310,13 @@ final class ReleaseService
                 }
             }
         }
+        // Điều kiện 6 (no_cycles): đồ thị phụ thuộc của dự án không có chu trình.
         $cycle = DependencyService::projectCycle($connection, $projectId);
         if ($cycle !== null) {
             $problems['no_cycles'][] = 'Phát hiện chu trình phụ thuộc: '
                 . implode(' -> ', array_map(static fn(int $id): string => '#' . $id, $cycle));
         }
+        // Điều kiện 8 (role): người thao tác là release manager hoặc admin.
         if ($role !== null && !canManageRelease($role)) {
             $problems['role'][] = 'Chỉ release manager hoặc admin được chuyển ready và chốt phát hành.';
         }

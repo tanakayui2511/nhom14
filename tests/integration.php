@@ -27,7 +27,7 @@ $release = queryOne(
     [(string)$core]
 );
 if ($coreIssue === null || $mobileIssue === null || $release === null) {
-    fwrite(STDERR, "NOT_RUN: thiếu dữ li�?u seed cho smoke test.\n");
+    fwrite(STDERR, "NOT_RUN: thiếu dữ liệu seed cho smoke test.\n");
     exit(2);
 }
 
@@ -42,7 +42,7 @@ for ($attempt = 0; $attempt < 10; $attempt++) {
     fclose($probe);
 }
 if ($port === 0) {
-    fwrite(STDERR, "NOT_RUN: không tìm được c�.ng trđng cho HTTP server.\n");
+    fwrite(STDERR, "NOT_RUN: không tìm được cổng trống cho HTTP server.\n");
     exit(2);
 }
 
@@ -67,7 +67,7 @@ $descriptors = [
 ];
 $server = proc_open($command, $descriptors, $pipes, dirname(__DIR__), $environment);
 if (!is_resource($server)) {
-    fwrite(STDERR, "NOT_RUN: không kh�Yi chạy được PHP built-in server.\n");
+    fwrite(STDERR, "NOT_RUN: không khởi chạy được PHP built-in server.\n");
     exit(2);
 }
 $started = false;
@@ -88,14 +88,14 @@ if (!$started) {
 }
 
 try {
-    testCase('HTTP: trang chưa đểng nhập chuy�fn về login', function () use ($port): void {
+    testCase('HTTP: trang chưa đăng nhập chuyển về login', function () use ($port): void {
         $cookies = [];
         $response = integrationHttp($port, 'GET', '/', [], $cookies);
-        assertSame(302, $response['status'], 'Trang chủ phải chuy�fn hư�>ng');
+        assertSame(302, $response['status'], 'Trang chủ phải chuyển hướng');
         assertContains('/login.php', implode(' ', $response['headers']['location'] ?? []), 'Location login');
     });
 
-    testCase('HTTP: đểng nhập đúng và truy cập dashboard', function () use ($port): void {
+    testCase('HTTP: đăng nhập đúng và truy cập dashboard', function () use ($port): void {
         $cookies = [];
         $loginPage = integrationHttp($port, 'GET', '/login.php', [], $cookies);
         assertSame(200, $loginPage['status'], 'Trang login phải trả 200');
@@ -105,16 +105,16 @@ try {
             'username' => 'dev_a',
             'password' => 'demo1234',
         ], $cookies);
-        assertSame(303, $login['status'], 'Đ�fng nhập đúng phải redirect');
+        assertSame(303, $login['status'], 'Đăng nhập đúng phải redirect');
         assertContains('/', implode(' ', $login['headers']['location'] ?? []), 'Redirect về trang chủ');
         assertTrue($cookies !== [], 'Phải nhận session cookie');
         $dashboard = integrationHttp($port, 'GET', '/', [], $cookies);
         assertSame(200, $dashboard['status'], 'Dashboard phải trả 200');
-        assertContains('Nguyễn An', $dashboard['body'], 'Dashboard phải hi�fn th�< người dùng');
+        assertContains('Nguyễn An', $dashboard['body'], 'Dashboard phải hiển thị người dùng');
         assertContains('Tổng quan', $dashboard['body'], 'Dashboard phải có tiêu đề');
     });
 
-    testCase('HTTP: đểng nhập sai bị từ chđi', function () use ($port): void {
+    testCase('HTTP: đăng nhập sai bị từ chối', function () use ($port): void {
         $cookies = [];
         $loginPage = integrationHttp($port, 'GET', '/login.php', [], $cookies);
         $token = csrfFromHtml($loginPage['body']);
@@ -123,7 +123,7 @@ try {
             'username' => 'dev_a',
             'password' => 'sai-mat-khau',
         ], $cookies);
-        assertSame(200, $login['status'], 'Đ�fng nhập sai không được redirect');
+        assertSame(200, $login['status'], 'Đăng nhập sai không được redirect');
         assertContains('không đúng', $login['body'], 'Phải báo sai tài khoản/mật khẩu');
         $dashboard = integrationHttp($port, 'GET', '/', [], $cookies);
         assertSame(302, $dashboard['status'], 'Session sai không được vào dashboard');
@@ -140,7 +140,7 @@ try {
         assertContains('CSRF', $login['body'], 'Thông báo CSRF');
     });
 
-    testCase('HTTP: phân quyền chéo dự án không đổi dữ li�?u', function () use (
+    testCase('HTTP: phân quyền chéo dự án không đổi dữ liệu', function () use (
         $port,
         $connection,
         $core,
@@ -182,7 +182,7 @@ try {
         ], $cookies);
         assertSame(403, $post['status'], 'Phải trả 403 khi gửi project B');
         $after = testIssueSnapshot($connection, (int)$mobileIssue['id']);
-        assertSame((string)$before['title'], (string)$after['title'], 'Dữ li�?u Mobile không được đổi');
+        assertSame((string)$before['title'], (string)$after['title'], 'Dữ liệu Mobile không được đổi');
         assertSame((int)$before['version'], (int)$after['version'], 'Version Mobile không được đổi');
         $graph = integrationHttp($port, 'GET', '/dependencies.php?project_id=' . $mobile, [], $cookies);
         assertSame(403, $graph['status'], 'Dev project A must not view project B graph');
@@ -233,7 +233,7 @@ try {
             [],
             $cookies
         );
-        assertSame(200, $dependenciesPage['status'], 'Trang phụ thuộcTc phải chạy');
+        assertSame(200, $dependenciesPage['status'], 'Trang phụ thuộc phải chạy');
         assertContains('data-graph-svg', $dependenciesPage['body'], 'Dependency page must render graph SVG');
         assertContains('data-graph-zoom="in"', $dependenciesPage['body'], 'Graph must expose zoom control');
         assertContains('data-graph-detail', $dependenciesPage['body'], 'Graph must expose issue detail panel');
@@ -246,7 +246,7 @@ try {
             $cookies
         );
         assertSame(200, $releasesPage['status'], 'Trang release phải chạy');
-        assertContains('Điều kiện phát hành', $releasesPage['body'], 'Phải công bđ điều ki�?n phát hành');
+        assertContains('Điều kiện phát hành', $releasesPage['body'], 'Phải công bố điều kiện phát hành');
     });
 
     testCase('HTTP: release manager tạo, ready và chốt release', function () use (
@@ -263,7 +263,7 @@ try {
               ORDER BY id LIMIT 1",
             [(string)$core]
         );
-        assertTrue($issue !== null, 'Cần issue không blocker, không phụ thuộcTc');
+        assertTrue($issue !== null, 'Cần issue không blocker, không phụ thuộc');
         IssueService::recordTest($connection, $core, $testerA, 'tester', (int)$issue['id'], [
             'version' => (string)testIssueSnapshot($connection, (int)$issue['id'])['version'],
             'result' => 'passed',
@@ -317,9 +317,9 @@ try {
             'project_id' => (string)$core,
             'release_id' => (string)$releaseId,
         ], $cookies);
-        assertSame(303, $releaseResult['status'], 'Chđt release phải redirect');
+        assertSame(303, $releaseResult['status'], 'Chốt release phải redirect');
         $stored = queryOne($connection, 'SELECT status FROM releases WHERE id=$1', [(string)$releaseId]);
-        assertSame('released', (string)$stored['status'], 'Release phải �Y trạng thái released');
+        assertSame('released', (string)$stored['status'], 'Release phải ở trạng thái released');
         $item = queryOne(
             $connection,
             'SELECT snapshot_title FROM release_items WHERE release_id=$1 AND issue_id=$2',
@@ -354,7 +354,7 @@ try {
             implode(' ', $response['headers']['content-type'] ?? []),
             'Content-Type phải là Markdown'
         );
-        assertContains('Ghi chú phát hành', $response['body'], 'N�Ti dung release notes');
+        assertContains('Ghi chú phát hành', $response['body'], 'Nội dung release notes');
     });
     testCase('HTTP P1-3 A: issue dự án B không được thêm vào release dự án A', function () use (
         $port,
@@ -407,7 +407,7 @@ try {
             "SELECT count(*) AS total FROM audit_log
              WHERE action='release_item_added' AND entity_type='release' AND entity_id=\$1",
             [(string)$releaseId]
-        )['total'], 'Request bị từ chđi không được ghi audit thành công');
+        )['total'], 'Request bị từ chối không được ghi audit thành công');
     });
 
     testCase('HTTP P1-3 C1: CSRF cho cập nhật issue, bình luận và kết quả kiểm thử', function () use (
@@ -429,7 +429,7 @@ try {
             'version' => '1',
             'title' => 'CSRF issue đã sửa',
             'description' => 'Mô tả CSRF',
-            'steps' => 'Bư�>c CSRF',
+            'steps' => 'Bước CSRF',
             'priority' => 'medium',
             'status' => 'open',
             'assignee_id' => (string)$devA,
@@ -445,7 +445,7 @@ try {
         integrationExpectCsrfRejected($port, '/issues.php', $update, $cookies, 'Cập nhật issue');
         $after = testIssueSnapshot($connection, $issue);
         assertSame((string)$before['title'], (string)$after['title'], 'CSRF sai không được đổi tiêu đề issue');
-        assertSame((int)$before['version'], (int)$after['version'], 'CSRF sai không được t�fng version issue');
+        assertSame((int)$before['version'], (int)$after['version'], 'CSRF sai không được tăng version issue');
         assertSame($auditBefore, (int)queryOne(
             $connection,
             "SELECT count(*) AS total FROM audit_log
@@ -457,8 +457,8 @@ try {
         $response = integrationHttp($port, 'POST', '/issues.php', $update, $cookies);
         assertSame(303, $response['status'], 'CSRF hợp lệ phải cập nhật issue và redirect');
         $afterUpdate = testIssueSnapshot($connection, $issue);
-        assertSame('CSRF issue đã sửa', (string)$afterUpdate['title'], 'Cập nhật hợp lệ phải ghi dữ li�?u');
-        assertSame((int)$before['version'] + 1, (int)$afterUpdate['version'], 'Cập nhật hợp lệ phải t�fng version');
+        assertSame('CSRF issue đã sửa', (string)$afterUpdate['title'], 'Cập nhật hợp lệ phải ghi dữ liệu');
+        assertSame((int)$before['version'] + 1, (int)$afterUpdate['version'], 'Cập nhật hợp lệ phải tăng version');
 
         $comment = [
             'action' => 'comment',
@@ -531,7 +531,7 @@ try {
              ORDER BY id DESC LIMIT 1",
             [(string)$project, (string)$testerA]
         );
-        assertSame('tester', (string)($recordedRole['tester_role'] ?? ''), 'Audit HTTP phải lưu vai trò tại thời đi�fm ghi');
+        assertSame('tester', (string)($recordedRole['tester_role'] ?? ''), 'Audit HTTP phải lưu vai trò tại thời điểm ghi');
     });
 
     testCase('HTTP P1-3 C2: CSRF cho thêm và xóa dependency', function () use (
@@ -609,7 +609,7 @@ try {
         )['total'], 'Dependency hợp lệ phải bị xóa');
     });
 
-    testCase('HTTP P1-3 C3: CSRF cho thêm, xóa thành viên và bảo v�? admin cuối', function () use (
+    testCase('HTTP P1-3 C3: CSRF cho thêm, xóa thành viên và bảo vệ admin cuối', function () use (
         $port,
         $connection,
         $adminA
@@ -681,7 +681,7 @@ try {
         ];
         $response = integrationHttp($port, 'POST', '/projects.php', $lastAdmin, $cookies);
         assertSame(200, $response['status'], 'Gỡ admin cuối phải trả trang lỗi, không redirect thành công');
-        assertContains('ít nhất một admin', $response['body'], 'Phải báo không th�f gỡ admin cuối');
+        assertContains('ít nhất một admin', $response['body'], 'Phải báo không thể gỡ admin cuối');
         assertSame('admin', (string)queryOne(
             $connection,
             'SELECT role FROM project_members WHERE project_id=$1 AND user_id=$2',
@@ -780,12 +780,12 @@ try {
             'project_id' => (string)$project,
             'release_id' => (string)$releaseId,
         ];
-        integrationExpectCsrfRejected($port, '/releases.php', $ready, $cookies, 'Chuy�fn ready');
+        integrationExpectCsrfRejected($port, '/releases.php', $ready, $cookies, 'Chuyển ready');
         assertSame('planned', (string)queryOne(
             $connection,
             'SELECT status FROM releases WHERE id=$1',
             [(string)$releaseId]
-        )['status'], 'CSRF sai không được chuy�fn release sang ready');
+        )['status'], 'CSRF sai không được chuyển release sang ready');
         assertSame(0, (int)queryOne(
             $connection,
             "SELECT count(*) AS total FROM audit_log
@@ -794,19 +794,19 @@ try {
         )['total'], 'CSRF sai không được ghi audit ready');
         $ready['csrf'] = $token;
         $response = integrationHttp($port, 'POST', '/releases.php', $ready, $cookies);
-        assertSame(303, $response['status'], 'CSRF hợp lệ phải chuy�fn release sang ready');
+        assertSame(303, $response['status'], 'CSRF hợp lệ phải chuyển release sang ready');
         assertSame('ready', (string)queryOne(
             $connection,
             'SELECT status FROM releases WHERE id=$1',
             [(string)$releaseId]
-        )['status'], 'Release phải �Y trạng thái ready');
+        )['status'], 'Release phải ở trạng thái ready');
 
         $final = [
             'action' => 'release',
             'project_id' => (string)$project,
             'release_id' => (string)$releaseId,
         ];
-        integrationExpectCsrfRejected($port, '/releases.php', $final, $cookies, 'Chđt release');
+        integrationExpectCsrfRejected($port, '/releases.php', $final, $cookies, 'Chốt release');
         assertSame('ready', (string)queryOne(
             $connection,
             'SELECT status FROM releases WHERE id=$1',
@@ -825,7 +825,7 @@ try {
             $connection,
             'SELECT status FROM releases WHERE id=$1',
             [(string)$releaseId]
-        )['status'], 'Release phải �Y trạng thái released');
+        )['status'], 'Release phải ở trạng thái released');
         $snapshot = queryOne(
             $connection,
             'SELECT snapshot_test_result,snapshot_test_version FROM release_items WHERE release_id=$1 AND issue_id=$2',
@@ -834,7 +834,7 @@ try {
         assertSame('passed', (string)($snapshot['snapshot_test_result'] ?? ''), 'Snapshot phải ghi test passed');
     });
 
-    testCase('HTTP P1-3 C5: POST chưa đểng nhập không được ghi dữ li�?u', function () use (
+    testCase('HTTP P1-3 C5: POST chưa đăng nhập không được ghi dữ liệu', function () use (
         $port,
         $connection,
         $core,
@@ -862,11 +862,11 @@ try {
         $cookies = [];
         foreach ($requests as [$path, $post]) {
             $response = integrationHttp($port, 'POST', $path, $post, $cookies);
-            assertSame(302, $response['status'], 'POST chưa đểng nhập phải redirect: ' . $path);
+            assertSame(302, $response['status'], 'POST chưa đăng nhập phải redirect: ' . $path);
             assertContains('/login.php', implode(' ', $response['headers']['location'] ?? []), 'Redirect login: ' . $path);
         }
         $after = $count();
-        assertSame($before, $after, 'POST chưa đểng nhập không được làm thay đổi dữ li�?u');
+        assertSame($before, $after, 'POST chưa đăng nhập không được làm thay đổi dữ liệu');
 
         $guestCookies = [];
         $loginPage = integrationHttp($port, 'GET', '/login.php', [], $guestCookies);
@@ -877,10 +877,10 @@ try {
             'project_id' => (string)$core,
             'title' => 'Không được tạo dù có CSRF',
         ], $guestCookies);
-        assertSame(302, $response['status'], 'Có CSRF nhưng chưa đểng nhập vẫn phải redirect login');
+        assertSame(302, $response['status'], 'Có CSRF nhưng chưa đăng nhập vẫn phải redirect login');
     });
 
-    testCase('HTTP P1-3 C6: logout là POST và bắt bu�Tc CSRF', function () use ($port): void {
+    testCase('HTTP P1-3 C6: logout là POST và bắt buộc CSRF', function () use ($port): void {
         $cookies = integrationLogin($port, 'dev_a');
         $response = integrationHttp($port, 'POST', '/logout.php', [], $cookies);
         assertSame(419, $response['status'], 'Logout thiếu CSRF phải trả 419');
@@ -920,7 +920,7 @@ try {
             'project_id' => (string)$core,
             'title' => 'CSRF issue create',
             'description' => 'Mô tả',
-            'steps' => 'Bư�>c',
+            'steps' => 'Bước',
             'issue_type' => 'task',
             'priority' => 'medium',
             'assignee_id' => (string)$devA,

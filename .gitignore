@@ -1,6 +1,7 @@
-# Local data and credentials
-.local/
-**/.local/
+# Local data and credentials (chỉ commit file mẫu db.example.json)
+.local/*
+**/.local/*
+!/.local/db.example.json
 
 # Environment
 .env

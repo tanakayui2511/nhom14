@@ -137,8 +137,8 @@ $graphEdges = array_map(static function (array $dependency) use ($cycleEdges): a
 }, $visibleDependencies);
 $blockedCount = count(array_filter($visibleIssues, static fn(array $issue): bool => isset($blockedIds[(int)$issue['id']])));
 $completeCount = count(array_filter($visibleIssues, static fn(array $issue): bool => in_array((string)$issue['status'], ['verified', 'closed'], true)));
-$statusOptions = issueStatuses();
-$priorityOptions = issuePriorities();
+$statusOptions = ISSUE_STATUSES;
+$priorityOptions = ISSUE_PRIORITIES;
 
 pageStart('Quan hệ phụ thuộc');
 if ($error !== '') {

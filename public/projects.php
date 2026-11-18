@@ -7,7 +7,7 @@ require __DIR__ . '/../src/ProjectService.php';
 
 $user = requireLogin();
 $connection = db();
-$roleOptions = ['developer', 'tester', 'release_manager', 'admin'];
+$roleOptions = PROJECT_ROLES;
 $error = '';
 
 $isAnyAdmin = queryOne(

@@ -18,8 +18,8 @@ final class IssueService
         $title = postString($input, 'title', 200, true, 'Tiêu đề');
         $description = postString($input, 'description', 20000, false, 'Mô tả');
         $steps = postString($input, 'steps', 20000, false, 'Các bước tái hiện');
-        $type = postEnum($input, 'issue_type', issueTypes(), 'Loại công việc');
-        $priority = postEnum($input, 'priority', issuePriorities(), 'Mức ưu tiên');
+        $type = postEnum($input, 'issue_type', ISSUE_TYPES, 'Loại công việc');
+        $priority = postEnum($input, 'priority', ISSUE_PRIORITIES, 'Mức ưu tiên');
         $assigneeId = postOptionalInt($input, 'assignee_id', 1, PHP_INT_MAX, 'Người phụ trách');
         return transaction($connection, function () use (
             $connection,
@@ -84,8 +84,8 @@ final class IssueService
         $title = postString($input, 'title', 200, true, 'Tiêu đề');
         $description = postString($input, 'description', 20000, false, 'Mô tả');
         $steps = postString($input, 'steps', 20000, false, 'Các bước tái hiện');
-        $priority = postEnum($input, 'priority', issuePriorities(), 'Mức ưu tiên');
-        $status = postEnum($input, 'status', issueStatuses(), 'Trạng thái');
+        $priority = postEnum($input, 'priority', ISSUE_PRIORITIES, 'Mức ưu tiên');
+        $status = postEnum($input, 'status', ISSUE_STATUSES, 'Trạng thái');
         $assigneeId = postOptionalInt($input, 'assignee_id', 1, PHP_INT_MAX, 'Người phụ trách');
         $commitUrl = postUrl($input, 'commit_url', 500, 'Commit / PR URL');
         return transaction($connection, function () use (
@@ -235,7 +235,7 @@ final class IssueService
         array $input
     ): int {
         $expectedVersion = postInt($input, 'version', 1, PHP_INT_MAX, 'Phiên bản dữ liệu');
-        $resultValue = postEnum($input, 'result', testResults(), 'Kết quả kiểm thử');
+        $resultValue = postEnum($input, 'result', TEST_RESULTS, 'Kết quả kiểm thử');
         $notes = postString($input, 'notes', 5000, false, 'Ghi chú kiểm thử');
         return transaction($connection, function () use (
             $connection,
@@ -288,7 +288,13 @@ final class IssueService
                 $connection,
                 'UPDATE issues SET status=$1,version=$2,updated_at=now()
                  WHERE id=$3 AND project_id=$4 AND version=$5',
-                 [(string)$newStatus, (string)$newVersion, (string)$issueId, (string)$projectId, (string)$expectedVersion]
+                [
+                    $newStatus,
+                    (string)$newVersion,
+                    (string)$issueId,
+                    (string)$projectId,
+                    (string)$expectedVersion,
+                ]
             );
             if (pg_affected_rows($updated) !== 1) {
                 throw new ConflictException(

@@ -4,8 +4,26 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/App.php';
 
+/**
+ * Đồ thị phụ thuộc giữa các công việc.
+ *
+ * Quy ước cạnh: A -> B nghĩa là "A phụ thuộc B" (B phải xong trước A).
+ * Danh sách kề có dạng [issueId => [dependsOnId, ...]].
+ *
+ * Các hàm findPath, findCycle và cycleIfAdded là hàm thuần: chỉ nhận mảng kề,
+ * không truy vấn CSDL, nên được unit test trực tiếp trong tests/run.php.
+ */
 final class DependencyService
 {
+    /**
+     * Tìm một đường đi từ $start tới $target bằng DFS dùng ngăn xếp tường minh.
+     *
+     * Mỗi phần tử ngăn xếp lưu [đỉnh hiện tại, đường đi tới đỉnh đó]. Đỉnh đã
+     * thăm được đánh dấu trong $seen để mỗi đỉnh chỉ mở rộng một lần, nên độ
+     * phức tạp là O(V + E) và không lặp vô hạn kể cả khi dữ liệu cũ có vòng.
+     *
+     * @return int[]|null Danh sách đỉnh từ $start tới $target, hoặc null.
+     */
     public static function findPath(array $adjacency, int $start, int $target): ?array
     {
         $stack = [[$start, [$start]]];
@@ -28,6 +46,38 @@ final class DependencyService
         return null;
     }
 
+    /**
+     * Nếu thêm cạnh $issueId -> $dependsOnId thì có tạo vòng không?
+     *
+     * Cạnh mới tạo vòng khi và chỉ khi từ $dependsOnId đã đi được tới $issueId.
+     * Khi đó chuỗi vòng là: $issueId -> $dependsOnId -> ... -> $issueId.
+     *
+     * Ví dụ A->B, B->C đã có; thêm C->A: từ A đi được tới C (A, B, C) nên vòng
+     * trả về là [C, A, B, C].
+     *
+     * @return int[]|null Chuỗi vòng (đỉnh đầu lặp lại ở cuối) hoặc null.
+     */
+    public static function cycleIfAdded(array $adjacency, int $issueId, int $dependsOnId): ?array
+    {
+        if ($issueId === $dependsOnId) {
+            return [$issueId, $issueId];
+        }
+        $path = self::findPath($adjacency, $dependsOnId, $issueId);
+        if ($path === null) {
+            return null;
+        }
+        return [$issueId, ...$path];
+    }
+
+    /**
+     * Phát hiện chu trình bất kỳ trong toàn đồ thị bằng DFS ba màu.
+     *
+     * Trạng thái: 0 = chưa thăm (trắng), 1 = đang nằm trên ngăn xếp đệ quy
+     * (xám), 2 = đã duyệt xong (đen). Gặp cạnh tới một đỉnh xám nghĩa là có
+     * cạnh quay lui, tức là có chu trình; cắt ngăn xếp từ đỉnh đó để lấy chuỗi.
+     *
+     * @return int[]|null Chuỗi chu trình (đỉnh đầu lặp lại ở cuối) hoặc null.
+     */
     public static function findCycle(array $adjacency): ?array
     {
         $state = [];
@@ -43,6 +93,7 @@ final class DependencyService
                         return $cycle;
                     }
                 } elseif ($nextState === 1) {
+                    // Cạnh quay lui: $next đang ở trên ngăn xếp => có vòng.
                     $index = array_search($next, $stack, true);
                     $cycle = array_slice($stack, $index === false ? 0 : (int)$index);
                     $cycle[] = $next;

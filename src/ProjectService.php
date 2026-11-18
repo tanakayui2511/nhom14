@@ -99,6 +99,7 @@ final class ProjectService
         string $username,
         string $role
     ): void {
+        $role = validateEnum($role, PROJECT_ROLES, 'Vai trò thành viên');
         transaction($connection, function () use (
             $connection,
             $projectId,

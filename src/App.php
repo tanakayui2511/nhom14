@@ -2,9 +2,22 @@
 
 declare(strict_types=1);
 
+/*
+ * Danh sách giá trị hợp lệ cho các cột enum. Đây là nguồn duy nhất: kiểm tra
+ * dữ liệu (postEnum), form hiển thị và test đều dùng lại các hằng này để PHP
+ * từ chối giá trị sai bằng thông báo tiếng Việt trước khi CSDL báo lỗi CHECK.
+ */
+const ISSUE_PRIORITIES = ['blocker', 'critical', 'high', 'medium', 'low'];
+const ISSUE_STATUSES = ['open', 'in_progress', 'resolved', 'retest', 'verified', 'closed'];
+const ISSUE_TYPES = ['bug', 'task', 'feature'];
+const TEST_RESULTS = ['passed', 'failed', 'blocked'];
+const PROJECT_ROLES = ['developer', 'tester', 'release_manager', 'admin'];
+const RELEASE_STATUSES = ['planned', 'ready', 'released'];
+
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Exceptions.php';
 require_once __DIR__ . '/Validation.php';
+require_once __DIR__ . '/Labels.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     ini_set('session.use_strict_mode', '1');

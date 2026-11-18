@@ -24,15 +24,15 @@ testCase('seed có đủ dự án, issue, dependency và release', function () u
             (SELECT count(*) FROM dependencies) AS dependencies,
             (SELECT count(*) FROM releases) AS releases'
     );
-    assertSame(5, (int)$counts['users'], 'Sđ người dùng mẫu');
-    assertSame(2, (int)$counts['projects'], 'Sđ dự án mẫu');
-    assertSame(40, (int)$counts['issues'], 'Sđ issue mẫu');
-    assertSame(15, (int)$counts['dependencies'], 'Sđ dependency mẫu');
-    assertSame(3, (int)$counts['releases'], 'Sđ release mẫu');
+    assertSame(5, (int)$counts['users'], 'Số người dùng mẫu');
+    assertSame(2, (int)$counts['projects'], 'Số dự án mẫu');
+    assertSame(40, (int)$counts['issues'], 'Số issue mẫu');
+    assertSame(15, (int)$counts['dependencies'], 'Số dependency mẫu');
+    assertSame(3, (int)$counts['releases'], 'Số release mẫu');
     assertTrue(DependencyService::projectCycle(
         $connection,
         testProjectId($connection, 'ReleaseTracker Core')
-    ) === null, 'Seed không được có chu trình phụ thuộcTc.');
+    ) === null, 'Seed không được có chu trình phụ thuộc.');
 });
 
 testCase('seed không tạo issue verified thiếu test passed đúng version hiện tại', function () use ($connection): void {
@@ -72,11 +72,11 @@ testCase('seed không tạo issue verified thiếu test passed đúng version hi
     assertSame(
         'resolved',
         (string)$formError['status'],
-        'Issue hoàn thành nhưng chưa có test phải �Y trạng thái resolved, không phải verified'
+        'Issue hoàn thành nhưng chưa có test phải ở trạng thái resolved, không phải verified'
     );
 });
 
-testCase('đồ th�<: tìm đường và phát hiện chu trình thuần PHP', function (): void {
+testCase('đồ thị: tìm đường và phát hiện chu trình thuần PHP', function (): void {
     $adjacency = [1 => [2], 2 => [3], 3 => []];
     assertSame([1, 2, 3], DependencyService::findPath($adjacency, 1, 3), 'Đường đi 1 -> 3');
     assertSame(null, DependencyService::findPath($adjacency, 3, 1), 'Không có đường đi ngược');
@@ -85,7 +85,7 @@ testCase('đồ th�<: tìm đường và phát hiện chu trình thuần PHP',
     assertSame($cycle[0], $cycle[count($cycle) - 1], 'Chu trình phải khép kín');
 });
 
-testCase('TEST 1: từ chđi chu trình và không lưu quan h�? vòng', function () use ($connection, $devA): void {
+testCase('TEST 1: từ chối chu trình và không lưu quan hệ vòng', function () use ($connection, $devA): void {
     $project = testInsertProject($connection, 'Cycle');
     $a = testInsertIssue($connection, $project, 'A', 'medium', 'open', $devA, $devA);
     $b = testInsertIssue($connection, $project, 'B', 'medium', 'open', $devA, $devA);
@@ -96,9 +96,9 @@ testCase('TEST 1: từ chđi chu trình và không lưu quan h�? vòng', funct
         static fn() => DependencyService::add($connection, $project, $c, $a, $devA),
         ConflictException::class,
         'A -> B -> C -> A',
-        'Phải từ chđi chu trình kèm nhãn A -> B -> C -> A'
+        'Phải từ chối chu trình kèm nhãn A -> B -> C -> A'
     );
-    assertContains('vòng', $exception->getMessage(), 'Thông báo phải nói rõ quan h�? vòng');
+    assertContains('vòng', $exception->getMessage(), 'Thông báo phải nói rõ quan hệ vòng');
     $bad = queryOne(
         $connection,
         'SELECT 1 FROM dependencies WHERE issue_id=$1 AND depends_on_id=$2',
@@ -109,17 +109,17 @@ testCase('TEST 1: từ chđi chu trình và không lưu quan h�? vòng', funct
         static fn() => DependencyService::add($connection, $project, $a, $b, $devA),
         ConflictException::class,
         'đã tồn tại',
-        'Phải từ chđi dependency trùng lặp'
+        'Phải từ chối dependency trùng lặp'
     );
     expectException(
         static fn() => DependencyService::add($connection, $project, $a, $a, $devA),
         ValidationException::class,
         'chính nó',
-        'Phải từ chđi tự phụ thuộcTc'
+        'Phải từ chối tự phụ thuộc'
     );
 });
 
-testCase('TEST 1b: dependency khác dự án bị từ chđi', function () use ($connection, $core, $mobile, $devA): void {
+testCase('TEST 1b: dependency khác dự án bị từ chối', function () use ($connection, $core, $mobile, $devA): void {
     $coreIssue = queryOne(
         $connection,
         'SELECT id FROM issues WHERE project_id=$1 ORDER BY id LIMIT 1',
@@ -130,7 +130,7 @@ testCase('TEST 1b: dependency khác dự án bị từ chđi', function () use (
         'SELECT id FROM issues WHERE project_id=$1 ORDER BY id LIMIT 1',
         [(string)$mobile]
     );
-    assertTrue($coreIssue !== null && $mobileIssue !== null, 'Cần issue �Y hai dự án');
+    assertTrue($coreIssue !== null && $mobileIssue !== null, 'Cần issue ở hai dự án');
     expectException(
         static fn() => DependencyService::add(
             $connection,
@@ -141,11 +141,11 @@ testCase('TEST 1b: dependency khác dự án bị từ chđi', function () use (
         ),
         NotFoundException::class,
         'cùng dự án',
-        'Phải từ chđi dependency khác dự án'
+        'Phải từ chối dependency khác dự án'
     );
 });
 
-testCase('TEST 1c: dependency trùng bị từ chđi, không đổi dữ li�?u và không ghi audit giả', function () use (
+testCase('TEST 1c: dependency trùng bị từ chối, không đổi dữ liệu và không ghi audit giả', function () use (
     $connection,
     $core,
     $devA
@@ -189,7 +189,7 @@ testCase('TEST 1c: dependency trùng bị từ chđi, không đổi dữ li�?u
         static fn() => DependencyService::add($connection, $core, $sourceId, $targetId, $devA),
         ConflictException::class,
         'đã tồn tại',
-        'Phải từ chđi dependency đã tồn tại'
+        'Phải từ chối dependency đã tồn tại'
     );
 
     assertSame($beforeDependency, $dependencyCount(), 'Dependency trùng không được tạo thêm dòng');
@@ -197,7 +197,7 @@ testCase('TEST 1c: dependency trùng bị từ chđi, không đổi dữ li�?u
     assertSame(
         PGSQL_TRANSACTION_IDLE,
         pg_transaction_status($connection),
-        'Transaction phải rollback sạch, không để lại trạng thái m�Y'
+        'Transaction phải rollback sạch, không để lại trạng thái mở'
     );
 });
 
@@ -211,7 +211,7 @@ testCase('TEST 2: blocker chưa kiểm thử lại thì không được ready/re
     $issue = testInsertIssue($connection, $project, 'Blocker chưa retest', 'blocker', 'open', $devA, $devA);
     $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
         'version_name' => '0.9.0',
-        'description' => 'Ki�fm thử blocker',
+        'description' => 'Kiểm thử blocker',
     ]);
     ReleaseService::addItem($connection, $release, $project, $issue, $releaseA, 'release_manager');
     expectException(
@@ -263,8 +263,8 @@ testCase('TEST 2: blocker chưa kiểm thử lại thì không được ready/re
         (int)$current['version'],
         [
             'title' => 'Blocker đã đổi nội dung',
-            'description' => 'N�Ti dung mới',
-            'steps' => 'Bư�>c mới',
+            'description' => 'Nội dung mới',
+            'steps' => 'Bước mới',
             'priority' => 'blocker',
             'status' => 'in_progress',
             'assignee_id' => (string)$devA,
@@ -286,7 +286,7 @@ testCase('TEST 2: blocker chưa kiểm thử lại thì không được ready/re
         static fn() => ReleaseService::markReady($connection, $release, $project, $devA, 'developer'),
         ForbiddenException::class,
         'release manager',
-        'Developer không được chuy�fn ready'
+        'Developer không được chuyển ready'
     );
 });
 
@@ -405,7 +405,7 @@ testCase('TEST 2b: blocker closed trong release vẫn phải có test hiện t�
         $connection,
         'SELECT status FROM releases WHERE id=$1',
         [(string)$release]
-    )['status'], 'Chđt release thất bại không được đổi trạng thái ready');
+    )['status'], 'Chốt release thất bại không được đổi trạng thái ready');
 
     $current = testIssueSnapshot($connection, $issue);
     IssueService::update(
@@ -428,7 +428,7 @@ testCase('TEST 2b: blocker closed trong release vẫn phải có test hiện t�
     IssueService::recordTest($connection, $project, $testerA, 'tester', $issue, [
         'version' => (string)testIssueSnapshot($connection, $issue)['version'],
         'result' => 'passed',
-        'notes' => 'Retest sau khi m�Y lại',
+        'notes' => 'Retest sau khi mở lại',
     ]);
     ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager');
     ReleaseService::release($connection, $release, $project, $releaseA, 'release_manager');
@@ -447,7 +447,7 @@ testCase('TEST 2c: blocker dependency closed vẫn phải có test hiện tại'
 ): void {
     $project = testInsertProject($connection, 'BlockerClosedDep');
     $dependency = testInsertIssue($connection, $project, 'Blocker dependency closed', 'blocker', 'open', $devA, $devA);
-    $item = testInsertIssue($connection, $project, 'Release item phụ thuộcTc blocker', 'medium', 'open', $devA, $devA);
+    $item = testInsertIssue($connection, $project, 'Release item phụ thuộc blocker', 'medium', 'open', $devA, $devA);
     $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
         'version_name' => '2c.1.0',
         'description' => 'Blocker dependency closed',
@@ -577,7 +577,7 @@ testCase('TEST 2c: blocker dependency closed vẫn phải có test hiện tại'
         $connection,
         'SELECT status FROM releases WHERE id=$1',
         [(string)$release]
-    )['status'], 'Chđt release thất bại không được đổi trạng thái ready');
+    )['status'], 'Chốt release thất bại không được đổi trạng thái ready');
 
     $current = testIssueSnapshot($connection, $dependency);
     IssueService::update(
@@ -600,7 +600,7 @@ testCase('TEST 2c: blocker dependency closed vẫn phải có test hiện tại'
     IssueService::recordTest($connection, $project, $testerA, 'tester', $dependency, [
         'version' => (string)testIssueSnapshot($connection, $dependency)['version'],
         'result' => 'passed',
-        'notes' => 'Retest sau khi m�Y lại',
+        'notes' => 'Retest sau khi mở lại',
     ]);
     ReleaseService::markReady($connection, $release, $project, $releaseA, 'release_manager');
     ReleaseService::release($connection, $release, $project, $releaseA, 'release_manager');
@@ -611,12 +611,12 @@ testCase('TEST 2c: blocker dependency closed vẫn phải có test hiện tại'
     )['status'], 'Blocker dependency closed được retest hợp lệ phải phát hành được');
 });
 
-testCase('TEST 3a: optimistic locking tuần tự giữ nguyên dữ li�?u của client thắng', function () use (
+testCase('TEST 3a: optimistic locking tuần tự giữ nguyên dữ liệu của client thắng', function () use (
     $connection,
     $devA
 ): void {
     $project = testInsertProject($connection, 'Lock');
-    $issue = testInsertIssue($connection, $project, 'Bản gđc', 'medium', 'open', $devA, $devA);
+    $issue = testInsertIssue($connection, $project, 'Bản gốc', 'medium', 'open', $devA, $devA);
     $fields = [
         'title' => 'Client A',
         'description' => 'A',
@@ -627,7 +627,7 @@ testCase('TEST 3a: optimistic locking tuần tự giữ nguyên dữ li�?u c�
         'commit_url' => '',
     ];
     $newVersion = IssueService::update($connection, $project, $devA, 'developer', $issue, 1, $fields);
-    assertSame(2, $newVersion, 'Version phải t�fng đúng một lần');
+    assertSame(2, $newVersion, 'Version phải tăng đúng một lần');
     $fields['title'] = 'Client B';
     expectException(
         static fn() => IssueService::update(
@@ -641,11 +641,11 @@ testCase('TEST 3a: optimistic locking tuần tự giữ nguyên dữ li�?u c�
         ),
         ConflictException::class,
         'XUNG ĐỘT',
-        'Client B dùng version cũ phải nhận xung đ�Tt'
+        'Client B dùng version cũ phải nhận xung đột'
     );
     $stored = testIssueSnapshot($connection, $issue);
-    assertSame('Client A', (string)$stored['title'], 'Không được ghi đè dữ li�?u client A');
-    assertSame(2, (int)$stored['version'], 'Version không được t�fng sai');
+    assertSame('Client A', (string)$stored['title'], 'Không được ghi đè dữ liệu client A');
+    assertSame(2, (int)$stored['version'], 'Version không được tăng sai');
 });
 
 testCase('TEST 3b: optimistic locking cạnh tranh bằng hai process', function () use (
@@ -653,7 +653,7 @@ testCase('TEST 3b: optimistic locking cạnh tranh bằng hai process', function
     $devA
 ): void {
     $project = testInsertProject($connection, 'LockRace');
-    $issue = testInsertIssue($connection, $project, 'Race gđc', 'medium', 'open', $devA, $devA);
+    $issue = testInsertIssue($connection, $project, 'Race gốc', 'medium', 'open', $devA, $devA);
     $base = [
         'description' => 'Race',
         'steps' => 'Race',
@@ -698,7 +698,7 @@ testCase('TEST 3b: optimistic locking cạnh tranh bằng hai process', function
         }
     }
     assertSame(1, $wins, 'Phải có đúng một process cập nhật thành công');
-    assertSame(1, $conflicts, 'Phải có đúng một process nhận xung đ�Tt');
+    assertSame(1, $conflicts, 'Phải có đúng một process nhận xung đột');
     $stored = testIssueSnapshot($connection, $issue);
     assertSame(2, (int)$stored['version'], 'Version cuối phải là 2');
     assertTrue(
@@ -707,7 +707,7 @@ testCase('TEST 3b: optimistic locking cạnh tranh bằng hai process', function
     );
 });
 
-testCase('TEST 4: phân quyền chéo dự án �Y service/query', function () use (
+testCase('TEST 4: phân quyền chéo dự án ở service/query', function () use (
     $connection,
     $core,
     $mobile,
@@ -730,7 +730,7 @@ testCase('TEST 4: phân quyền chéo dự án �Y service/query', function () 
             (int)$mobileIssue['id'],
             (int)$before['version'],
             [
-                'title' => 'B�< sửa chéo dự án',
+                'title' => 'Bị sửa chéo dự án',
                 'description' => 'x',
                 'steps' => 'x',
                 'priority' => 'low',
@@ -770,7 +770,7 @@ testCase('TEST 4: phân quyền chéo dự án �Y service/query', function () 
         'Service phải chặn test issue khác dự án'
     );
     $after = testIssueSnapshot($connection, (int)$mobileIssue['id']);
-    assertSame((string)$before['title'], (string)$after['title'], 'Dữ li�?u dự án B không được đổi');
+    assertSame((string)$before['title'], (string)$after['title'], 'Dữ liệu dự án B không được đổi');
     assertSame((int)$before['version'], (int)$after['version'], 'Version dự án B không được đổi');
 });
 
@@ -820,7 +820,7 @@ testCase('TEST 5: snapshot và release notes bất biến sau khi sửa issue ng
         [
             'title' => 'Snapshot mới',
             'description' => 'Mô tả mới',
-            'steps' => 'Bư�>c mới',
+            'steps' => 'Bước mới',
             'priority' => 'critical',
             'status' => 'in_progress',
             'assignee_id' => (string)$devA,
@@ -836,7 +836,7 @@ testCase('TEST 5: snapshot và release notes bất biến sau khi sửa issue ng
     $notesAfter = ReleaseNotes::markdown($connection, $release);
     assertSame($notesBefore, $notesAfter, 'Release notes cũ không được đổi');
     assertContains('Snapshot cũ', $notesAfter, 'Notes phải lấy tiêu đề snapshot cũ');
-    assertNotContains('Snapshot mới', $notesAfter, 'Notes không được lấy dữ li�?u issue hiện tại');
+    assertNotContains('Snapshot mới', $notesAfter, 'Notes không được lấy dữ liệu issue hiện tại');
     assertSame('released', (string)queryOne(
         $connection,
         'SELECT status FROM releases WHERE id=$1',
@@ -859,10 +859,10 @@ testCase('TEST 5: snapshot và release notes bất biến sau khi sửa issue ng
         'SELECT snapshot_title FROM release_items WHERE release_id=$1 AND issue_id=$2',
         [(string)$release, (string)$issue]
     );
-    assertSame('Snapshot cũ', (string)$stillOld['snapshot_title'], 'Snapshot vẫn phải giữ dữ li�?u cũ');
+    assertSame('Snapshot cũ', (string)$stillOld['snapshot_title'], 'Snapshot vẫn phải giữ dữ liệu cũ');
 });
 
-testCase('TEST 5b: hai process chốt cùng release ch�? một thành công', function () use (
+testCase('TEST 5b: hai process chốt cùng release chỉ một thành công', function () use (
     $connection,
     $devA,
     $releaseA
@@ -906,17 +906,17 @@ testCase('TEST 5b: hai process chốt cùng release ch�? một thành công', 
             $conflicts++;
         }
     }
-    assertSame(1, $wins, 'Ch�? một process được chốt release');
+    assertSame(1, $wins, 'Chỉ một process được chốt release');
     assertSame(1, $conflicts, 'Process còn lại phải nhận lỗi');
     $releaseRow = queryOne($connection, 'SELECT * FROM releases WHERE id=$1', [(string)$release]);
-    assertSame('released', (string)$releaseRow['status'], 'Release phải �Y trạng thái released');
+    assertSame('released', (string)$releaseRow['status'], 'Release phải ở trạng thái released');
     $auditCount = queryOne(
         $connection,
         "SELECT count(*) AS total FROM audit_log
          WHERE action='release_snapshotted' AND entity_id=\$1",
         [(string)$release]
     );
-    assertSame(1, (int)$auditCount['total'], 'Ch�? được ghi một audit chốt release');
+    assertSame(1, (int)$auditCount['total'], 'Chỉ được ghi một audit chốt release');
 });
 
 testCase('transaction rollback khi lỗi giữa lúc chốt release', function () use (
@@ -954,7 +954,7 @@ testCase('transaction rollback khi lỗi giữa lúc chốt release', function (
             static fn() => ReleaseService::release($connection, $release, $project, $releaseA, 'release_manager'),
             RuntimeException::class,
             'DATABASE_OPERATION_FAILED',
-            'L�-i giữa transaction phải được ném ra'
+            'Lỗi giữa transaction phải được ném ra'
         );
     } finally {
         execSql($connection, 'DROP TRIGGER IF EXISTS trg_test_fail_release ON releases');
@@ -970,7 +970,7 @@ testCase('transaction rollback khi lỗi giữa lúc chốt release', function (
         'SELECT * FROM release_items WHERE release_id=$1 AND issue_id=$2',
         [(string)$release, (string)$issue]
     );
-    assertSame($snapshotBefore, $snapshotAfter, 'Snapshot phải rollback, không ghi d�Y');
+    assertSame($snapshotBefore, $snapshotAfter, 'Snapshot phải rollback, không ghi dở');
     assertSame(0, (int)queryOne(
         $connection,
         "SELECT count(*) AS total FROM audit_log
@@ -1018,7 +1018,7 @@ testCase('quyền theo vai trò và validation đầu vào', function () use (
         ]),
         ValidationException::class,
         'không được để trống',
-        'Comment r�-ng phải bị từ chđi'
+        'Comment rỗng phải bị từ chối'
     );
     assertSame(false, canManageProject('release_manager'), 'Release manager không phải admin dự án');
     assertSame(true, canManageProject('admin'), 'Admin được quản lý dự án');
@@ -1035,13 +1035,13 @@ testCase('xác thực mật khẩu và CSRF không fail-open', function () use (
     $row = queryOne($connection, "SELECT password_hash FROM users WHERE username='dev_a'");
     assertTrue($row !== null, 'Phải có tài khoản dev_a');
     assertSame(true, password_verify('demo1234', (string)$row['password_hash']), 'Mật khẩu demo phải đúng');
-    assertSame(false, password_verify('sai-mat-khau', (string)$row['password_hash']), 'Mật khẩu sai phải bị từ chđi');
+    assertSame(false, password_verify('sai-mat-khau', (string)$row['password_hash']), 'Mật khẩu sai phải bị từ chối');
     $_SESSION['csrf'] = 'csrf-test-token';
     assertSame(true, isCsrfValid('csrf-test-token'), 'Token đúng phải hợp lệ');
-    assertSame(false, isCsrfValid(''), 'Token r�-ng phải bị từ chđi');
-    assertSame(false, isCsrfValid('sai'), 'Token sai phải bị từ chđi');
+    assertSame(false, isCsrfValid(''), 'Token rỗng phải bị từ chối');
+    assertSame(false, isCsrfValid('sai'), 'Token sai phải bị từ chối');
     $_POST['csrf'] = '';
-    assertSame(false, isCsrfValid(null), 'Session và request cùng r�-ng không được fail-open');
+    assertSame(false, isCsrfValid(null), 'Session và request cùng rỗng không được fail-open');
     $_POST['csrf'] = 'csrf-test-token';
     assertSame(true, isCsrfValid(null), 'Token từ POST phải được kiểm tra');
     unset($_POST['csrf']);
@@ -1062,7 +1062,7 @@ testCase('audit log không chứa mật khẩu/token', function () use ($connect
     }
 });
 
-testCase('TEST A: no-op sau passed không t�fng version, không mất test/release ready', function () use (
+testCase('TEST A: no-op sau passed không tăng version, không mất test/release ready', function () use (
     $connection,
     $devA,
     $testerA,
@@ -1077,7 +1077,7 @@ testCase('TEST A: no-op sau passed không t�fng version, không mất test/rel
     ]);
     $before = testIssueSnapshot($connection, $issue);
     assertSame('verified', (string)$before['status'], 'Issue phải verified sau test passed');
-    assertSame(2, (int)$before['version'], 'Version phải t�fng sau test passed');
+    assertSame(2, (int)$before['version'], 'Version phải tăng sau test passed');
 
     $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
         'version_name' => 'A.1.0',
@@ -1130,21 +1130,21 @@ testCase('TEST A: no-op sau passed không t�fng version, không mất test/rel
     $releaseAfter = queryOne($connection, 'SELECT status FROM releases WHERE id=$1', [(string)$release]);
 
     assertSame((int)$before['version'], $returnedVersion, 'No-op phải trả lại version hiện tại');
-    assertSame((int)$before['version'], (int)$after['version'], 'No-op không được t�fng version');
+    assertSame((int)$before['version'], (int)$after['version'], 'No-op không được tăng version');
     assertSame((string)$before['updated_at'], (string)$after['updated_at'], 'No-op không được đổi updated_at');
     assertSame('verified', (string)$after['status'], 'No-op phải giữ verified');
     assertSame((int)$latestBefore['issue_version'], (int)$latestAfter['issue_version'], 'No-op không được làm test cũ đi');
-    assertSame('passed', (string)$latestAfter['result'], 'Test passed phải còn hi�?u lực');
+    assertSame('passed', (string)$latestAfter['result'], 'Test passed phải còn hiệu lực');
     assertSame(
         true,
         IssueService::hasValidPassedTest($connection, $issue, (int)$after['version']),
-        'No-op phải giữ test passed hợp lệ v�>i version hiện tại'
+        'No-op phải giữ test passed hợp lệ với version hiện tại'
     );
     assertSame((int)$auditBefore['total'], (int)$auditAfter['total'], 'No-op không được ghi audit issue_updated');
     assertSame('ready', (string)$releaseAfter['status'], 'No-op không được hạ release ready');
 });
 
-testCase('TEST B: sửa nội dung sau passed phải làm mất hi�?u lực xác nhận', function () use (
+testCase('TEST B: sửa nội dung sau passed phải làm mất hiệu lực xác nhận', function () use (
     $connection,
     $devA,
     $testerA
@@ -1160,7 +1160,7 @@ testCase('TEST B: sửa nội dung sau passed phải làm mất hi�?u lực x�
     assertSame('verified', (string)$before['status'], 'Issue phải verified trước khi sửa');
 
     $changedFields = [
-        'title' => 'N�Ti dung mới sau kiểm thử',
+        'title' => 'Nội dung mới sau kiểm thử',
         'description' => (string)$before['description'],
         'steps' => (string)$before['reproduction_steps'],
         'priority' => (string)$before['priority'],
@@ -1180,11 +1180,11 @@ testCase('TEST B: sửa nội dung sau passed phải làm mất hi�?u lực x�
         ),
         ValidationException::class,
         'kiểm thử lại',
-        'Không được nhận verified khi nội dung thay đổi nhưng ch�? có test cũ'
+        'Không được nhận verified khi nội dung thay đổi nhưng chỉ có test cũ'
     );
     $unchanged = testIssueSnapshot($connection, $issue);
-    assertSame((string)$before['title'], (string)$unchanged['title'], 'Yêu cầu bị từ chđi không được sửa dữ li�?u');
-    assertSame((int)$before['version'], (int)$unchanged['version'], 'Yêu cầu bị từ chđi không được t�fng version');
+    assertSame((string)$before['title'], (string)$unchanged['title'], 'Yêu cầu bị từ chối không được sửa dữ liệu');
+    assertSame((int)$before['version'], (int)$unchanged['version'], 'Yêu cầu bị từ chối không được tăng version');
 
     $changedFields['status'] = 'open';
     $newVersion = IssueService::update(
@@ -1202,9 +1202,9 @@ testCase('TEST B: sửa nội dung sau passed phải làm mất hi�?u lực x�
         'SELECT result,issue_version FROM test_results WHERE issue_id=$1 ORDER BY id DESC LIMIT 1',
         [(string)$issue]
     );
-    assertSame((int)$before['version'] + 1, $newVersion, 'Sửa nội dung phải t�fng version đúng một lần');
+    assertSame((int)$before['version'] + 1, $newVersion, 'Sửa nội dung phải tăng version đúng một lần');
     assertSame('open', (string)$after['status'], 'Issue không được giữ verified sau khi nội dung đổi');
-    assertSame((int)$before['version'], (int)$latest['issue_version'], 'Test vẫn phải gắn v�>i version cũ');
+    assertSame((int)$before['version'], (int)$latest['issue_version'], 'Test vẫn phải gắn với version cũ');
     assertSame(
         false,
         IssueService::hasValidPassedTest($connection, $issue, (int)$after['version']),
@@ -1278,7 +1278,7 @@ testCase('TEST C: release chặn dependency có kết quả kiểm thử lỗi t
         'SELECT result,issue_version FROM test_results WHERE issue_id=$1 ORDER BY id DESC LIMIT 1',
         [(string)$dependency]
     );
-    assertSame('verified', (string)$stale['status'], 'Dữ li�?u mô phỏng phải là verified');
+    assertSame('verified', (string)$stale['status'], 'Dữ liệu mô phỏng phải là verified');
     assertSame((int)$staleTest['issue_version'], (int)$stale['version'] - 1, 'Test phải lỗi thời sau khi đổi nội dung');
 
     $exception = expectException(
@@ -1298,7 +1298,7 @@ testCase('TEST C: release chặn dependency có kết quả kiểm thử lỗi t
         $connection,
         'SELECT status FROM releases WHERE id=$1',
         [(string)$release]
-    )['status'], 'Release phải �Y planned sau lần ready thất bại');
+    )['status'], 'Release phải ở planned sau lần ready thất bại');
 
     IssueService::recordTest($connection, $project, $testerA, 'tester', $dependency, [
         'version' => (string)testIssueSnapshot($connection, $dependency)['version'],
@@ -1325,7 +1325,7 @@ testCase('TEST C2: dependency verified có test legacy issue_version=0 bị ch�
     IssueService::recordTest($connection, $project, $testerA, 'tester', $dependency, [
         'version' => (string)testIssueSnapshot($connection, $dependency)['version'],
         'result' => 'passed',
-        'notes' => 'Pass nhưng dữ li�?u legacy',
+        'notes' => 'Pass nhưng dữ liệu legacy',
     ]);
     queryParams(
         $connection,
@@ -1356,7 +1356,7 @@ testCase('TEST C2: dependency verified có test legacy issue_version=0 bị ch�
         $connection,
         'SELECT status FROM releases WHERE id=$1',
         [(string)$release]
-    )['status'], 'Release phải �Y planned sau khi chặn test legacy');
+    )['status'], 'Release phải ở planned sau khi chặn test legacy');
 });
 
 testCase('TEST C3: dependency closed nhưng test mới nhất failed vẫn bị chặn', function () use (
@@ -1402,7 +1402,7 @@ testCase('TEST C3: dependency closed nhưng test mới nhất failed vẫn bị 
         $connection,
         'SELECT status FROM releases WHERE id=$1',
         [(string)$release]
-    )['status'], 'Release phải �Y planned sau khi chặn closed failed');
+    )['status'], 'Release phải ở planned sau khi chặn closed failed');
 });
 
 testCase('TEST C4: ready -> released cũng phải kiểm tra lại dependency', function () use (
@@ -1452,7 +1452,7 @@ testCase('TEST C4: ready -> released cũng phải kiểm tra lại dependency', 
         ),
         ValidationException::class,
         'failed',
-        'Chđt release phải kiểm tra lại dependency'
+        'Chốt release phải kiểm tra lại dependency'
     );
     assertContains('#' . $dependency, $exception->getMessage(), 'Thông báo phải nêu dependency khi chốt');
     assertSame('ready', (string)queryOne(
@@ -1462,12 +1462,12 @@ testCase('TEST C4: ready -> released cũng phải kiểm tra lại dependency', 
     )['status'], 'Release phải giữ ready khi chốt thất bại');
 });
 
-testCase('TEST D: version nền cũ vẫn bị coi là xung đ�Tt dù payload no-op', function () use (
+testCase('TEST D: version nền cũ vẫn bị coi là xung đột dù payload no-op', function () use (
     $connection,
     $devA
 ): void {
     $project = testInsertProject($connection, 'StaleNoop');
-    $issue = testInsertIssue($connection, $project, 'Issue gđc', 'medium', 'open', $devA, $devA);
+    $issue = testInsertIssue($connection, $project, 'Issue gốc', 'medium', 'open', $devA, $devA);
     $original = testIssueSnapshot($connection, $issue);
     $firstFields = [
         'title' => 'Client A đã sửa',
@@ -1509,14 +1509,14 @@ testCase('TEST D: version nền cũ vẫn bị coi là xung đ�Tt dù payload 
         ),
         ConflictException::class,
         'XUNG ĐỘT',
-        'Payload no-op dùng version cũ vẫn phải xung đ�Tt'
+        'Payload no-op dùng version cũ vẫn phải xung đột'
     );
     $after = testIssueSnapshot($connection, $issue);
-    assertSame('Client A đã sửa', (string)$after['title'], 'Không được ghi đè dữ li�?u Client A');
-    assertSame($newVersion, (int)$after['version'], 'Version không được thay đổi b�Yi request cũ');
+    assertSame('Client A đã sửa', (string)$after['title'], 'Không được ghi đè dữ liệu Client A');
+    assertSame($newVersion, (int)$after['version'], 'Version không được thay đổi bởi request cũ');
 });
 
-testCase('TEST E: không th�f đặt verified bằng form cập nhật, k�f cả khi có test passed hiện tại', function () use (
+testCase('TEST E: không thể đặt verified bằng form cập nhật, kể cả khi có test passed hiện tại', function () use (
     $connection,
     $devA,
     $testerA
@@ -1528,7 +1528,7 @@ testCase('TEST E: không th�f đặt verified bằng form cập nhật, k�f 
         'result' => 'passed',
         'notes' => 'Pass hợp lệ',
     ]);
-    // Mô phỏng dữ li�?u legacy/import: test passed đúng version nhưng status không phải verified.
+    // Mô phỏng dữ liệu legacy/import: test passed đúng version nhưng status không phải verified.
     queryParams(
         $connection,
         "UPDATE issues SET status='retest' WHERE id=\$1 AND project_id=\$2",
@@ -1572,11 +1572,11 @@ testCase('TEST E: không th�f đặt verified bằng form cập nhật, k�f 
          WHERE action='issue_updated' AND entity_type='issue' AND entity_id=\$1",
         [(string)$issue]
     );
-    assertSame('retest', (string)$after['status'], 'Yêu cầu bị từ chđi không được đổi trạng thái');
-    assertSame((int)$before['version'], (int)$after['version'], 'Yêu cầu bị từ chđi không được t�fng version');
+    assertSame('retest', (string)$after['status'], 'Yêu cầu bị từ chối không được đổi trạng thái');
+    assertSame((int)$before['version'], (int)$after['version'], 'Yêu cầu bị từ chối không được tăng version');
     assertSame((int)$latestBefore['id'], (int)$latestAfter['id'], 'Test hiện tại phải được giữ nguyên');
     assertSame(true, (bool)$latestAfter['test_provenance_trusted'], 'Test vẫn phải có provenance hợp lệ');
-    assertSame((int)$auditBefore['total'], (int)$auditAfter['total'], 'Không được ghi audit khi từ chđi');
+    assertSame((int)$auditBefore['total'], (int)$auditAfter['total'], 'Không được ghi audit khi từ chối');
 });
 
 testCase('TEST F: test passed đúng version nhưng thiếu provenance không được dùng làm bằng chứng', function () use (
@@ -1663,13 +1663,13 @@ testCase('TEST G: latest test chọn theo id, không theo tested_at bị lệch'
         [(string)$second['id']]
     );
     $latest = IssueService::latestTest($connection, $issue);
-    assertSame((int)$second['id'], (int)$latest['id'], 'Latest test phải là id l�>n nhất');
-    assertSame('failed', (string)$latest['result'], 'Không được chọn test cũ ch�? vì tested_at mới hơn');
+    assertSame((int)$second['id'], (int)$latest['id'], 'Latest test phải là id lớn nhất');
+    assertSame('failed', (string)$latest['result'], 'Không được chọn test cũ chỉ vì tested_at mới hơn');
     assertSame((int)$second['issue_version'], (int)$latest['issue_version'], 'Latest test phải đúng version ghi nhận');
     assertSame(true, (bool)$latest['is_current'], 'Test mới nhất phải là current theo version issue');
 });
 
-testCase('TEST H: provenance dùng vai trò tại thời đi�fm ghi, không dùng membership hiện tại', function () use (
+testCase('TEST H: provenance dùng vai trò tại thời điểm ghi, không dùng membership hiện tại', function () use (
     $connection,
     $devA,
     $testerA
@@ -1690,7 +1690,7 @@ testCase('TEST H: provenance dùng vai trò tại thời đi�fm ghi, không d�
          ORDER BY id DESC LIMIT 1",
         [(string)$project, (string)$testerA]
     );
-    assertSame('tester', (string)($auditRole['tester_role'] ?? ''), 'Audit phải lưu vai trò tại thời đi�fm ghi');
+    assertSame('tester', (string)($auditRole['tester_role'] ?? ''), 'Audit phải lưu vai trò tại thời điểm ghi');
     queryParams(
         $connection,
         "UPDATE project_members SET role='developer' WHERE project_id=\$1 AND user_id=\$2",
@@ -1700,13 +1700,13 @@ testCase('TEST H: provenance dùng vai trò tại thời đi�fm ghi, không d�
     assertSame(
         true,
         IssueService::hasValidPassedTest($connection, $issue, $version),
-        'Đ�.i vai trò hiện tại không được làm mất hi�?u lực test l�<ch sử đã có provenance'
+        'Đổi vai trò hiện tại không được làm mất hiệu lực test lịch sử đã có provenance'
     );
     $latest = IssueService::latestTest($connection, $issue);
     assertSame('audited_role', (string)$latest['test_provenance'], 'Provenance phải lấy từ audit, không từ membership hiện tại');
 });
 
-testCase('TEST I: snapshot ch�? ghi passed khi test có provenance hợp lệ', function () use (
+testCase('TEST I: snapshot chỉ ghi passed khi test có provenance hợp lệ', function () use (
     $connection,
     $devA,
     $testerA,
@@ -1796,7 +1796,7 @@ testCase('TEST I: snapshot ch�? ghi passed khi test có provenance hợp lệ'
     assertContains('unverified', $untrustedSection, 'Mục issue thiếu provenance phải ghi unverified');
 });
 
-testCase('TEST J: migrate --status ch�? đọc, không tạo schema_migrations', function () use ($connection): void {
+testCase('TEST J: migrate --status chỉ đọc, không tạo schema_migrations', function () use ($connection): void {
     $probe = 'rt_status_' . bin2hex(random_bytes(4));
     $quoted = pg_escape_identifier($connection, $probe);
     assertTrue(
@@ -1813,7 +1813,7 @@ testCase('TEST J: migrate --status ch�? đọc, không tạo schema_migrations
             dirname(__DIR__),
             environmentWith(['RT_DB_SCHEMA' => $probe])
         );
-        assertTrue(is_resource($process), 'Phải kh�Yi chạy được migrate --status');
+        assertTrue(is_resource($process), 'Phải khởi chạy được migrate --status');
         $stdout = (string)stream_get_contents($pipes[1]);
         $stderr = (string)stream_get_contents($pipes[2]);
         fclose($pipes[1]);
@@ -1832,7 +1832,7 @@ testCase('TEST J: migrate --status ch�? đọc, không tạo schema_migrations
     }
 });
 
-testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dùng version của test', function () use (
+testCase('TEST K: recordTest tăng version đúng một lần và snapshot dùng version của test', function () use (
     $connection,
     $devA,
     $testerA,
@@ -1848,8 +1848,8 @@ testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dù
     ]);
     $afterFirst = testIssueSnapshot($connection, $issue);
     assertSame(2, $first, 'Ghi passed phải trả version mới');
-    assertSame(2, (int)$afterFirst['version'], 'Ghi passed phải t�fng version đúng 1');
-    assertSame('verified', (string)$afterFirst['status'], 'Passed phải chuy�fn verified');
+    assertSame(2, (int)$afterFirst['version'], 'Ghi passed phải tăng version đúng 1');
+    assertSame('verified', (string)$afterFirst['status'], 'Passed phải chuyển verified');
     $firstTest = IssueService::latestTest($connection, $issue);
     assertSame(2, (int)$firstTest['issue_version'], 'Test phải lưu version mới của issue');
     assertSame(true, (bool)$firstTest['is_current'], 'Test phải là current');
@@ -1860,9 +1860,9 @@ testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dù
         'notes' => 'Fail lần 1',
     ]);
     $afterSecond = testIssueSnapshot($connection, $issue);
-    assertSame(3, $second, 'Ghi failed cũng phải t�fng version');
-    assertSame(3, (int)$afterSecond['version'], 'Failed phải t�fng version đúng 1');
-    assertSame('retest', (string)$afterSecond['status'], 'Failed phải chuy�fn retest');
+    assertSame(3, $second, 'Ghi failed cũng phải tăng version');
+    assertSame(3, (int)$afterSecond['version'], 'Failed phải tăng version đúng 1');
+    assertSame('retest', (string)$afterSecond['status'], 'Failed phải chuyển retest');
     $secondTest = IssueService::latestTest($connection, $issue);
     assertSame(3, (int)$secondTest['issue_version'], 'Test failed phải lưu version 3');
     assertSame(
@@ -1877,8 +1877,8 @@ testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dù
         'notes' => 'Pass lần 2',
     ]);
     $afterThird = testIssueSnapshot($connection, $issue);
-    assertSame(4, $third, 'Pass lại phải t�fng version');
-    assertSame(4, (int)$afterThird['version'], 'Pass lại phải t�fng version đúng 1');
+    assertSame(4, $third, 'Pass lại phải tăng version');
+    assertSame(4, (int)$afterThird['version'], 'Pass lại phải tăng version đúng 1');
     assertSame('verified', (string)$afterThird['status'], 'Pass lại phải verified');
 
     $latest = IssueService::latestTest($connection, $issue);
@@ -1886,7 +1886,7 @@ testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dù
     assertSame(
         true,
         IssueService::hasValidPassedTest($connection, $issue, 4),
-        'Pass �Y version 4 phải hợp lệ'
+        'Pass ở version 4 phải hợp lệ'
     );
     $audit = queryOne(
         $connection,
@@ -1915,7 +1915,7 @@ testCase('TEST K: recordTest t�fng version đúng một lần và snapshot dù
     assertSame(4, (int)$snapshot['snapshot_test_version'], 'Snapshot phải dùng version của test');
 });
 
-testCase('TEST L: PGSSLMODE/PGSSLROOTCERT được truyền và giá tr�< sai bị từ chđi', function (): void {
+testCase('TEST L: PGSSLMODE/PGSSLROOTCERT được truyền và giá trị sai bị từ chối', function (): void {
     $dir = sys_get_temp_dir() . '/rt_cfg_' . bin2hex(random_bytes(4));
     assertTrue(mkdir($dir, 0700, true), 'Phải tạo được thư mục cấu hình tạm');
     $cfg = $dir . '/db.json';
@@ -1967,7 +1967,7 @@ testCase('TEST L: PGSSLMODE/PGSSLROOTCERT được truyền và giá tr�< sai 
 
         $writeConfig(['PGSSLMODE' => 'bogus']);
         $bad = $run();
-        assertTrue($bad['exit'] !== 0, 'PGSSLMODE sai phải bị từ chđi');
+        assertTrue($bad['exit'] !== 0, 'PGSSLMODE sai phải bị từ chối');
         assertContains(
             'DATABASE_CONFIG_INVALID',
             $bad['stdout'] . $bad['stderr'],
@@ -1979,7 +1979,7 @@ testCase('TEST L: PGSSLMODE/PGSSLROOTCERT được truyền và giá tr�< sai 
     }
 });
 
-testCase('TEST P1-2 A: role bị hạ trước khi lấy được khóa phải bị từ chđi', function () use (
+testCase('TEST P1-2 A: role bị hạ trước khi lấy được khóa phải bị từ chối', function () use (
     $connection,
     $devA,
     $releaseA,
@@ -2120,7 +2120,7 @@ testCase('TEST P1-2 B1: membership bị thu hồi trong lúc request đang chờ
     }
 });
 
-testCase('TEST P1-2 B: member bị gỡ thì service vẫn từ chđi dù role truyền vào còn cũ', function () use (
+testCase('TEST P1-2 B: member bị gỡ thì service vẫn từ chối dù role truyền vào còn cũ', function () use (
     $connection,
     $devA,
     $releaseA,
@@ -2170,7 +2170,7 @@ testCase('TEST P1-2 B: member bị gỡ thì service vẫn từ chđi dù role t
         $connection,
         'SELECT count(*) AS total FROM issues WHERE project_id=$1 AND title=$2',
         [(string)$project, 'Không được tạo sau khi bị gỡ']
-    )['total'], 'Không được tạo issue khi service tự từ chđi');
+    )['total'], 'Không được tạo issue khi service tự từ chối');
 });
 
 testCase('TEST P1-2 C: role do caller truyền vào không được dùng để cấp quyền', function () use (
@@ -2185,7 +2185,7 @@ testCase('TEST P1-2 C: role do caller truyền vào không được dùng để 
         ]),
         ForbiddenException::class,
         'release manager',
-        'Tester truyền role release_manager vẫn phải bị từ chđi'
+        'Tester truyền role release_manager vẫn phải bị từ chối'
     );
     assertSame(0, (int)queryOne(
         $connection,
@@ -2205,7 +2205,7 @@ testCase('TEST P1-2 E: không thêm issue dự án khác vào release qua servic
         'SELECT id FROM issues WHERE project_id=$1 ORDER BY id LIMIT 1',
         [(string)$mobile]
     );
-    assertTrue($foreignIssue !== null, 'Cần issue �Y dự án khác');
+    assertTrue($foreignIssue !== null, 'Cần issue ở dự án khác');
     $release = ReleaseService::create($connection, $project, $releaseA, 'release_manager', [
         'version_name' => 'P12-E.1.0',
         'description' => 'Release kiểm tra chéo dự án',
@@ -2271,7 +2271,7 @@ testCase('TEST P1-3 A: issue dự án B không được thêm vào release dự 
         ),
         NotFoundException::class,
         'không thuộc dự án',
-        'Service phải từ chđi issue dự án B khi thêm vào release dự án A'
+        'Service phải từ chối issue dự án B khi thêm vào release dự án A'
     );
 
     assertSame($beforeItems, (int)queryOne(
@@ -2284,10 +2284,10 @@ testCase('TEST P1-3 A: issue dự án B không được thêm vào release dự 
         "SELECT count(*) AS total FROM audit_log
          WHERE action='release_item_added' AND entity_type='release' AND entity_id=\$1",
         [(string)$releaseId]
-    )['total'], 'Request bị từ chđi không được ghi audit thành công');
+    )['total'], 'Request bị từ chối không được ghi audit thành công');
 });
 
-testCase('TEST P1-3 B1: admin cuối cùng không th�f bị gỡ hoặc hạ quyền', function () use (
+testCase('TEST P1-3 B1: admin cuối cùng không thể bị gỡ hoặc hạ quyền', function () use (
     $connection,
     $adminA
 ): void {
@@ -2309,7 +2309,7 @@ testCase('TEST P1-3 B1: admin cuối cùng không th�f bị gỡ hoặc hạ q
         static fn() => ProjectService::setMemberRole($connection, $project, $adminA, 'admin_a', 'developer'),
         ConflictException::class,
         'ít nhất một admin',
-        'Không được hạ admin cuối cùng xuđng developer'
+        'Không được hạ admin cuối cùng xuống developer'
     );
 
     $after = queryOne(
@@ -2364,7 +2364,7 @@ testCase('TEST P1-3 B2: quản lý admin hợp lệ khi còn admin khác', funct
     )['total'], 'Không được để dự án mất admin');
 });
 
-testCase('TEST P1-3 B3: hai process không th�f đồng thời gỡ hết admin', function () use (
+testCase('TEST P1-3 B3: hai process không thể đồng thời gỡ hết admin', function () use (
     $connection,
     $adminA,
     $devA
@@ -2410,7 +2410,7 @@ testCase('TEST P1-3 B3: hai process không th�f đồng thời gỡ hết admi
             assertTrue($result['json'] !== null, 'Worker gỡ admin phải trả JSON: ' . $result['stdout']);
         }
         $successes = (int)($resultOne['json']['ok'] ?? false) + (int)($resultTwo['json']['ok'] ?? false);
-        assertSame(1, $successes, 'Ch�? một process được gỡ admin trong tình huđng cạnh tranh');
+        assertSame(1, $successes, 'Chỉ một process được gỡ admin trong tình huống cạnh tranh');
         $failed = ($resultOne['json']['ok'] ?? false) === true ? $resultTwo : $resultOne;
         $failedMessage = (string)($failed['json']['message'] ?? '');
         assertTrue(
@@ -2429,7 +2429,7 @@ testCase('TEST P1-3 B3: hai process không th�f đồng thời gỡ hết admi
             "SELECT count(*) AS total FROM audit_log
              WHERE project_id=\$1 AND action='member_removed'",
             [(string)$project]
-        )['total'], 'Ch�? một thao tác gỡ admin được ghi audit thành công');
+        )['total'], 'Chỉ một thao tác gỡ admin được ghi audit thành công');
     } finally {
         execSql($connection, 'DROP TRIGGER IF EXISTS rt_test_slow_admin_delete ON project_members');
         execSql($connection, 'DROP FUNCTION IF EXISTS rt_test_slow_admin_delete()');
@@ -2567,7 +2567,7 @@ testCase('LEGACY REPORT: phân loại version 0, version hiện tại, failed v�
     assertSame(true, $report['read_only'], 'Report phải khai báo read_only=true');
     assertSame(5, (int)$report['summary']['tests'], 'Report phải thấy 5 test của project lọc');
     assertSame(1, (int)$report['summary']['legacy_tests'], 'Report phải thấy 1 legacy test');
-    assertSame(1, (int)$report['summary']['trusted_tests'], 'Ch�? test ghi qua service mới có provenance đáng tin');
+    assertSame(1, (int)$report['summary']['trusted_tests'], 'Chỉ test ghi qua service mới có provenance đáng tin');
     assertSame(4, (int)$report['summary']['untrusted_tests'], 'Test chèn trực tiếp phải là không có provenance');
     assertSame(1, (int)$report['summary']['valid_current_pass'], 'Report phải thấy 1 test hợp lệ hiện tại');
     assertSame(0, (int)$report['summary']['untrusted_current_pass'], 'Fixture không có passed hiện tại thiếu provenance');
@@ -2583,11 +2583,11 @@ testCase('LEGACY REPORT: phân loại version 0, version hiện tại, failed v�
     assertSame('legacy_unknown_pass', $testsByIssue[$legacyIssue][0]['validity'], 'Version 0 phải là legacy_unknown');
     assertSame('legacy_unknown', $testsByIssue[$legacyIssue][0]['version_state'], 'Version 0 không được suy đoán là current');
     assertSame('tester', $testsByIssue[$legacyIssue][0]['tester_role_current'], 'Report phải lấy được vai trò hiện tại');
-    assertSame(null, $testsByIssue[$legacyIssue][0]['recorded_role'], 'Test legacy không có vai trò tại thời đi�fm ghi');
+    assertSame(null, $testsByIssue[$legacyIssue][0]['recorded_role'], 'Test legacy không có vai trò tại thời điểm ghi');
     assertSame('unverified', $testsByIssue[$legacyIssue][0]['provenance'], 'Test legacy phải là unverified');
     assertSame('valid_current_pass', $testsByIssue[$validIssue][0]['validity'], 'Test passed đúng version phải hợp lệ');
     assertSame('audited_role', $testsByIssue[$validIssue][0]['provenance'], 'Test ghi qua service phải có provenance');
-    assertSame('tester', $testsByIssue[$validIssue][0]['recorded_role'], 'Audit phải lưu vai trò tại thời đi�fm ghi');
+    assertSame('tester', $testsByIssue[$validIssue][0]['recorded_role'], 'Audit phải lưu vai trò tại thời điểm ghi');
     assertSame('current_non_pass', $testsByIssue[$failedIssue][0]['validity'], 'Test failed đúng version là non-pass');
     assertSame('current_non_pass', $testsByIssue[$blockedIssue][0]['validity'], 'Test blocked đúng version là non-pass');
     assertSame('stale_version', $testsByIssue[$staleIssue][0]['validity'], 'Test version cũ phải là stale');
@@ -2596,7 +2596,7 @@ testCase('LEGACY REPORT: phân loại version 0, version hiện tại, failed v�
     foreach ($report['issues'] as $issue) {
         $issuesById[(int)$issue['issue_id']] = $issue;
     }
-    assertSame('legacy_unknown_version', $issuesById[$legacyIssue]['evidence_state'], 'Issue ch�? có legacy test phải là legacy_unknown_version');
+    assertSame('legacy_unknown_version', $issuesById[$legacyIssue]['evidence_state'], 'Issue chỉ có legacy test phải là legacy_unknown_version');
     assertSame('valid_current_pass', $issuesById[$validIssue]['evidence_state'], 'Issue có pass đúng version phải hợp lệ');
     assertSame('latest_failed', $issuesById[$failedIssue]['evidence_state'], 'Issue có latest failed phải báo latest_failed');
     assertSame('latest_blocked', $issuesById[$blockedIssue]['evidence_state'], 'Issue có latest blocked phải báo latest_blocked');
@@ -2624,7 +2624,7 @@ testCase('LEGACY REPORT: phân loại version 0, version hiện tại, failed v�
     );
     assertSame([], $issuesById[$validIssue]['warnings'], 'Issue có bằng chứng hợp lệ không được cảnh báo');
 
-    assertSame($before, $counts(), 'Legacy report ch�? đọc, không được thay đổi issue/test/audit');
+    assertSame($before, $counts(), 'Legacy report chỉ đọc, không được thay đổi issue/test/audit');
 });
 
 testCase('AUDIT-001: từ chối kết quả kiểm thử từ phiên bản form cũ', function () use (

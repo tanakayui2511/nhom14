@@ -191,7 +191,7 @@ if ($conflict && $selected > 0 && $projectId > 0) {
                     </label>
                     <label class="field">Ưu tiên
                         <select name="priority">
-                            <?php foreach (issuePriorities() as $value): ?>
+                            <?php foreach (ISSUE_PRIORITIES as $value): ?>
                                 <option value="<?= h($value) ?>" <?= $value === 'medium' ? 'selected' : '' ?>>
                                     <?= h(ucfirst($value)) ?>
                                 </option>
@@ -247,14 +247,14 @@ if ($conflict && $selected > 0 && $projectId > 0) {
                     <div class="grid">
                         <label class="field">Ưu tiên
                             <select name="priority">
-                                <?php foreach (issuePriorities() as $value): ?>
+                                <?php foreach (ISSUE_PRIORITIES as $value): ?>
                                     <option value="<?= h($value) ?>" <?= $detail['priority'] === $value ? 'selected' : '' ?>><?= h($value) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </label>
                         <label class="field">Trạng thái
                             <select name="status">
-                                <?php foreach (issueStatuses() as $value): ?>
+                                <?php foreach (ISSUE_STATUSES as $value): ?>
                                     <?php if ($value === 'verified' && (string)$detail['status'] !== 'verified') { continue; } ?>
                                     <option value="<?= h($value) ?>" <?= $detail['status'] === $value ? 'selected' : '' ?>><?= h($value) ?></option>
                                 <?php endforeach; ?>
@@ -295,7 +295,7 @@ if ($conflict && $selected > 0 && $projectId > 0) {
                         <input type="hidden" name="version" value="<?= (int)$detail['version'] ?>">
                         <label class="field">Kết quả kiểm thử
                             <select name="result">
-                                <?php foreach (testResults() as $value): ?>
+                                <?php foreach (TEST_RESULTS as $value): ?>
                                     <option value="<?= h($value) ?>"><?= h($value) ?></option>
                                 <?php endforeach; ?>
                             </select>
