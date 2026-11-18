@@ -14,25 +14,49 @@ $adminA = testUserId($connection, 'admin_a');
 
 echo 'TEST_SCHEMA=' . TestDatabase::schema() . "\n";
 
-testCase('seed có đủ dự án, issue, dependency và release', function () use ($connection): void {
-    $counts = queryOne(
-        $connection,
-        'SELECT
+testCase('seed có đủ dự án, issue, dependency, release và chạy lại không trùng', function () use ($connection): void {
+    $countSql = "SELECT
             (SELECT count(*) FROM users) AS users,
             (SELECT count(*) FROM projects) AS projects,
             (SELECT count(*) FROM issues) AS issues,
             (SELECT count(*) FROM dependencies) AS dependencies,
-            (SELECT count(*) FROM releases) AS releases'
-    );
+            (SELECT count(*) FROM releases) AS releases,
+            (SELECT count(*) FROM releases r JOIN projects p ON p.id=r.project_id WHERE p.name='Mobile Client') AS mobile_releases,
+            (SELECT count(*) FROM releases WHERE status='released') AS released,
+            (SELECT count(*) FROM release_items) AS items,
+            (SELECT count(*) FROM comments) AS comments,
+            (SELECT count(DISTINCT result) FROM test_results) AS result_kinds,
+            (SELECT count(*) FROM test_results) AS tests,
+            (SELECT count(*) FROM audit_log) AS audit";
+    $counts = queryOne($connection, $countSql);
     assertSame(5, (int)$counts['users'], 'Số người dùng mẫu');
     assertSame(2, (int)$counts['projects'], 'Số dự án mẫu');
-    assertSame(40, (int)$counts['issues'], 'Số issue mẫu');
-    assertSame(15, (int)$counts['dependencies'], 'Số dependency mẫu');
-    assertSame(3, (int)$counts['releases'], 'Số release mẫu');
-    assertTrue(DependencyService::projectCycle(
+    assertTrue((int)$counts['issues'] >= 40, 'Phải có ít nhất 40 công việc');
+    assertTrue((int)$counts['dependencies'] >= 15, 'Phải có ít nhất 15 phụ thuộc');
+    assertTrue((int)$counts['releases'] >= 3, 'Phải có ít nhất 3 phiên bản');
+    assertTrue((int)$counts['mobile_releases'] >= 1, 'Mobile Client phải có phiên bản');
+    assertSame(1, (int)$counts['released'], 'Phải có một phiên bản đã chốt');
+    assertTrue((int)$counts['comments'] > 0, 'Phải có bình luận mẫu');
+    assertSame(3, (int)$counts['result_kinds'], 'Phải có cả passed, failed, blocked');
+    foreach (['ReleaseTracker Core', 'Mobile Client'] as $name) {
+        assertTrue(DependencyService::projectCycle($connection, testProjectId($connection, $name)) === null,
+            'Seed không được có chu trình phụ thuộc: ' . $name);
+    }
+    $snapshot = queryAll(
         $connection,
-        testProjectId($connection, 'ReleaseTracker Core')
-    ) === null, 'Seed không được có chu trình phụ thuộc.');
+        "SELECT ri.snapshot_test_result,ri.snapshot_issue_type,ri.snapshot_commit_url
+         FROM release_items ri JOIN releases r ON r.id=ri.release_id
+         WHERE r.status='released'"
+    );
+    assertSame(3, count($snapshot), 'Phiên bản đã chốt phải có 3 item snapshot');
+    foreach ($snapshot as $row) {
+        assertSame('passed', (string)$row['snapshot_test_result'], 'Snapshot phải ghi passed');
+        assertTrue((string)$row['snapshot_issue_type'] !== '', 'Snapshot phải ghi loại');
+        assertTrue((string)$row['snapshot_commit_url'] !== '', 'Snapshot phải có link commit/PR');
+    }
+    // Chạy lại seed: không được nhân đôi dữ liệu.
+    execSql($connection, (string)file_get_contents(__DIR__ . '/../database/seed.sql'));
+    assertSame($counts, queryOne($connection, $countSql), 'Seed chạy lại phải không đổi số lượng');
 });
 
 testCase('seed không tạo issue verified thiếu test passed đúng version hiện tại', function () use ($connection): void {

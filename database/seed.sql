@@ -96,3 +96,131 @@ SELECT p.id,v.version,v.description,u.id FROM projects p CROSS JOIN users u CROS
 ('1.0.0','Bản phát hành nền tảng đầu tiên'),('1.1.0','Cải thiện quản lý lỗi và kiểm thử'),('2.0.0','Bản phát hành lớn tiếp theo')
 ) v(version,description) WHERE p.name='ReleaseTracker Core' AND u.username='release_a'
 ON CONFLICT(project_id,version_name) DO NOTHING;
+
+-- ===================================================================
+-- Bổ sung v1.1 (chạy lại nhiều lần không trùng: ON CONFLICT / NOT EXISTS).
+-- ===================================================================
+
+-- Ba công việc đã hoàn tất thuộc bản 0.9.0 đã phát hành (demo phép thử 5).
+INSERT INTO issues(project_id,title,description,reproduction_steps,issue_type,priority,status,reporter_id,assignee_id,commit_url)
+SELECT p.id, x.title, x.description, x.steps, x.kind, x.priority, 'closed', u1.id, u2.id, x.commit_url
+FROM (VALUES
+('Phát hành 0.9: trang đăng nhập cơ bản','Màn hình đăng nhập kiểm tra mật khẩu bằng password_verify.','1. Mở /login.php 2. Nhập tài khoản đúng 3. Vào được trang tổng quan','feature','high','dev_a','dev_a','https://github.com/example/releasetracker/pull/1'),
+('Phát hành 0.9: mật khẩu lưu dạng rõ','Mật khẩu phải được băm bằng password_hash.','Bước tái hiện: tạo tài khoản rồi xem bảng users. Kết quả mong đợi: chuỗi băm. Kết quả thực tế: mật khẩu gốc.','bug','blocker','tester_a','dev_a','https://github.com/example/releasetracker/commit/a1b2c3d'),
+('Phát hành 0.9: thiết lập CSDL và migration','Tạo schema ban đầu và công cụ migrate.','Chạy bash lab.sh migrate trên CSDL trống','task','medium','dev_a','dev_a','https://github.com/example/releasetracker/pull/2')
+) AS x(title,description,steps,kind,priority,reporter,assignee,commit_url)
+JOIN projects p ON p.name='ReleaseTracker Core'
+JOIN users u1 ON u1.username=x.reporter JOIN users u2 ON u2.username=x.assignee
+ON CONFLICT DO NOTHING;
+
+-- Link commit/PR mẫu cho một số công việc đang làm.
+UPDATE issues SET commit_url=x.url
+FROM (VALUES
+('API trả mã lỗi không nhất quán','https://github.com/example/releasetracker/pull/14'),
+('Liên kết commit vào công việc','https://github.com/example/releasetracker/commit/9f8e7d6'),
+('Mobile: Thông báo đẩy bị lặp','https://github.com/example/mobile-client/pull/3')
+) AS x(title,url)
+WHERE issues.title=x.title AND issues.commit_url='';
+
+-- Bình luận mẫu.
+INSERT INTO comments(issue_id,user_id,body)
+SELECT i.id,u.id,x.body
+FROM (VALUES
+('Lỗi đăng nhập khi token hết hạn','tester_a','Tái hiện được trên Chrome và Firefox sau 30 phút không thao tác.'),
+('Lỗi đăng nhập khi token hết hạn','dev_a','Đang xử lý: sẽ làm mới token trước khi hết hạn 1 phút.'),
+('API trả mã lỗi không nhất quán','tester_a','Endpoint /issues trả 200 kèm thông báo lỗi; mong đợi 422.'),
+('Kiểm tra liên kết phụ thuộc','release_a','Cần xong trước bản 1.1.0 vì ảnh hưởng điều kiện phát hành.'),
+('Phát hành 0.9: mật khẩu lưu dạng rõ','tester_a','Đã kiểm tra lại: cột password_hash dùng bcrypt.'),
+('Mobile: Thông báo đẩy bị lặp','dev_b','Nguyên nhân: đăng ký token hai lần khi khởi động lại ứng dụng.')
+) AS x(title,username,body)
+JOIN issues i ON i.title=x.title
+JOIN users u ON u.username=x.username
+WHERE NOT EXISTS (SELECT 1 FROM comments c WHERE c.issue_id=i.id AND c.body=x.body);
+
+-- Kết quả kiểm thử mẫu (passed / failed / blocked) kèm bản ghi audit làm bằng chứng nguồn gốc.
+-- Kết quả failed/blocked tương ứng công việc đã được trả về in_progress.
+WITH src(title,username,result,notes) AS (VALUES
+('Phát hành 0.9: trang đăng nhập cơ bản','tester_a','passed','Seed: đăng nhập đúng/sai đều xử lý đúng.'),
+('Phát hành 0.9: mật khẩu lưu dạng rõ','tester_a','passed','Seed: mật khẩu đã được băm.'),
+('Phát hành 0.9: thiết lập CSDL và migration','tester_a','passed','Seed: migrate chạy trên CSDL trống.'),
+('API trả mã lỗi không nhất quán','tester_a','failed','Seed: /issues vẫn trả 200 khi dữ liệu sai.'),
+('Tối ưu truy vấn bảng công việc','tester_a','blocked','Seed: chưa có dữ liệu lớn để đo hiệu năng.')
+), ins AS (
+  INSERT INTO test_results(issue_id,project_id,tester_id,result,notes,issue_version)
+  SELECT i.id,i.project_id,u.id,s.result,s.notes,i.version
+  FROM src s
+  JOIN issues i ON i.title=s.title
+  JOIN users u ON u.username=s.username
+  WHERE NOT EXISTS (SELECT 1 FROM test_results t WHERE t.issue_id=i.id AND t.notes=s.notes)
+  RETURNING id,project_id,tester_id,result,issue_version,issue_id
+)
+INSERT INTO audit_log(project_id,user_id,action,entity_type,entity_id,details)
+SELECT ins.project_id,ins.tester_id,'test_result_recorded','test_result',ins.id,
+       jsonb_build_object('issue_id',ins.issue_id,'result',ins.result,'issue_version',ins.issue_version,'tester_role','tester')
+FROM ins;
+
+-- Phiên bản cho Mobile Client và phiên bản 0.9.0 (sẽ được chốt) cho Core.
+INSERT INTO releases(project_id,version_name,description,created_by)
+SELECT p.id,v.version,v.description,u.id
+FROM (VALUES
+('Mobile Client','m-1.0.0','Bản phát hành đầu tiên của ứng dụng di động','admin_a'),
+('ReleaseTracker Core','0.9.0','Bản thử nghiệm nội bộ đã phát hành','release_a')
+) v(project,version,description,username)
+JOIN projects p ON p.name=v.project
+JOIN users u ON u.username=v.username
+ON CONFLICT(project_id,version_name) DO NOTHING;
+
+-- Gắn công việc vào các phiên bản còn planned (snapshot tạm, được ghi lại khi chốt).
+WITH src(project,version,title) AS (VALUES
+('ReleaseTracker Core','1.0.0','Lỗi đăng nhập khi token hết hạn'),
+('ReleaseTracker Core','1.0.0','Bổ sung ghi chú phát hành'),
+('ReleaseTracker Core','1.0.0','Thêm mô tả phiên bản'),
+('Mobile Client','m-1.0.0','Mobile: Ứng dụng khởi động chậm'),
+('Mobile Client','m-1.0.0','Mobile: Thông báo đẩy bị lặp'),
+('Mobile Client','m-1.0.0','Mobile: Lỗi đồng bộ phiên đăng nhập'),
+('ReleaseTracker Core','0.9.0','Phát hành 0.9: trang đăng nhập cơ bản'),
+('ReleaseTracker Core','0.9.0','Phát hành 0.9: mật khẩu lưu dạng rõ'),
+('ReleaseTracker Core','0.9.0','Phát hành 0.9: thiết lập CSDL và migration')
+), ins AS (
+  INSERT INTO release_items(release_id,issue_id,project_id,snapshot_title,snapshot_status,snapshot_priority,
+                            snapshot_assignee,snapshot_description,snapshot_commit_url,snapshot_issue_type)
+  SELECT r.id,i.id,p.id,i.title,i.status,i.priority,COALESCE(u.full_name,''),i.description,i.commit_url,i.issue_type
+  FROM src s
+  JOIN projects p ON p.name=s.project
+  JOIN releases r ON r.project_id=p.id AND r.version_name=s.version AND r.status='planned'
+  JOIN issues i ON i.project_id=p.id AND i.title=s.title
+  LEFT JOIN users u ON u.id=i.assignee_id
+  ON CONFLICT(release_id,issue_id) DO NOTHING
+  RETURNING release_id,issue_id,project_id
+)
+INSERT INTO audit_log(project_id,user_id,action,entity_type,entity_id,details)
+SELECT ins.project_id,r.created_by,'release_item_added','release',ins.release_id,jsonb_build_object('issue_id',ins.issue_id)
+FROM ins JOIN releases r ON r.id=ins.release_id;
+
+-- Chốt 0.9.0: planned -> ready -> released và ghi snapshot cuối cùng.
+-- Cờ rt.release_transition chỉ có hiệu lực trong transaction của seed.
+SELECT set_config('rt.release_transition','service',true);
+UPDATE releases r SET status='ready',checked_at=now()
+FROM projects p
+WHERE p.id=r.project_id AND p.name='ReleaseTracker Core' AND r.version_name='0.9.0' AND r.status='planned';
+UPDATE release_items ri
+SET snapshot_title=i.title,snapshot_status=i.status,snapshot_priority=i.priority,
+    snapshot_assignee=COALESCE(u.full_name,''),snapshot_description=i.description,
+    snapshot_commit_url=i.commit_url,snapshot_issue_type=i.issue_type,
+    snapshot_test_result=COALESCE(t.result,'not_tested'),snapshot_test_version=t.issue_version,
+    snapshot_test_tested_at=t.tested_at
+FROM releases r, issues i
+LEFT JOIN users u ON u.id=i.assignee_id
+LEFT JOIN LATERAL (
+  SELECT tr.result,tr.issue_version,tr.tested_at FROM test_results tr WHERE tr.issue_id=i.id ORDER BY tr.id DESC LIMIT 1
+) t ON true
+WHERE r.id=ri.release_id AND r.version_name='0.9.0' AND r.status='ready' AND i.id=ri.issue_id;
+UPDATE releases r SET status='released',released_at=now(),project_name_snapshot=p.name
+FROM projects p
+WHERE p.id=r.project_id AND p.name='ReleaseTracker Core' AND r.version_name='0.9.0' AND r.status='ready';
+INSERT INTO audit_log(project_id,user_id,action,entity_type,entity_id,details)
+SELECT r.project_id,r.created_by,'release_snapshotted','release',r.id,
+       jsonb_build_object('item_count',(SELECT count(*) FROM release_items ri WHERE ri.release_id=r.id),'source','seed')
+FROM releases r
+WHERE r.version_name='0.9.0' AND r.status='released'
+  AND NOT EXISTS (SELECT 1 FROM audit_log a WHERE a.action='release_snapshotted' AND a.entity_id=r.id);
